@@ -36,6 +36,7 @@ import AIPracticeWritingTest from "./pages/AIPracticeWritingTest";
 import AIPracticeSpeakingTest from "./pages/AIPracticeSpeakingTest";
 import AIPracticeReadingTest from "./pages/AIPracticeReadingTest";
 import AIPracticeListeningTest from "./pages/AIPracticeListeningTest";
+import AIPracticeHistory from "./pages/AIPracticeHistory";
 // Admin pages
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -105,6 +106,7 @@ const App = () => (
             
             {/* AI Practice */}
             <Route path="/ai-practice" element={<AIPractice />} />
+            <Route path="/ai-practice/history" element={<AIPracticeHistory />} />
             <Route path="/ai-practice/test/:testId" element={<AIPracticeTest />} />
             <Route path="/ai-practice/writing/:testId" element={<AIPracticeWritingTest />} />
             <Route path="/ai-practice/speaking/:testId" element={<AIPracticeSpeakingTest />} />

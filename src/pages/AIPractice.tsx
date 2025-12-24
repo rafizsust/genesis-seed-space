@@ -231,18 +231,30 @@ export default function AIPractice() {
       <main className="flex-1 py-8">
         <div className="container max-w-5xl mx-auto px-4">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-4">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-medium">AI-Powered Practice</span>
+          <div className="flex items-center justify-between mb-8">
+            <div className="text-center flex-1">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-4">
+                <Sparkles className="w-4 h-4" />
+                <span className="text-sm font-medium">AI-Powered Practice</span>
+              </div>
+              <h1 className="text-3xl md:text-4xl font-bold mb-3">
+                Generate Custom Practice Tests
+              </h1>
+              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                Create personalized IELTS practice questions tailored to your needs. 
+                AI generates unique questions, answers, and explanations instantly.
+              </p>
             </div>
-            <h1 className="text-3xl md:text-4xl font-bold mb-3">
-              Generate Custom Practice Tests
-            </h1>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Create personalized IELTS practice questions tailored to your needs. 
-              AI generates unique questions, answers, and explanations instantly.
-            </p>
+          </div>
+
+          {/* History Link */}
+          <div className="flex justify-end mb-4">
+            <Link to="/ai-practice/history">
+              <Button variant="outline" size="sm">
+                <Clock className="w-4 h-4 mr-2" />
+                View History
+              </Button>
+            </Link>
           </div>
 
           {!user && (
