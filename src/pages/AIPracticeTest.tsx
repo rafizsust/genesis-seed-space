@@ -203,7 +203,7 @@ export default function AIPracticeTest() {
     const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
     
     // Calculate results
-    const allQuestions = test.questionGroups.flatMap(g => g.questions);
+    const allQuestions = (test.questionGroups || []).flatMap(g => g.questions);
     const questionResults: QuestionResult[] = allQuestions.map(q => {
       const userAnswer = answers[q.question_number] || '';
       const correctAnswer = q.correct_answer;
@@ -418,7 +418,7 @@ export default function AIPracticeTest() {
           <Card>
             <CardContent className="p-4 md:p-6">
               <ScrollArea className="h-[calc(100vh-250px)]">
-                {test.questionGroups.map((group) => (
+                {(test.questionGroups || []).map((group) => (
                   <div key={group.id} className="mb-8">
                     <div className="mb-4 p-3 bg-muted rounded-lg">
                       <p className="text-sm font-medium">{group.instruction}</p>

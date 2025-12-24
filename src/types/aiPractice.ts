@@ -1,6 +1,6 @@
 // Types for AI Practice feature
 
-export type PracticeModule = 'reading' | 'listening';
+export type PracticeModule = 'reading' | 'listening' | 'writing' | 'speaking';
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
@@ -22,7 +22,13 @@ export type ListeningQuestionType =
   | 'MATCHING_CORRECT_LETTER'
   | 'TABLE_COMPLETION';
 
-export type QuestionType = ReadingQuestionType | ListeningQuestionType;
+// Writing task types
+export type WritingTaskType = 'TASK_1' | 'TASK_2';
+
+// Speaking part types
+export type SpeakingPartType = 'FULL_TEST' | 'PART_1' | 'PART_2' | 'PART_3';
+
+export type QuestionType = ReadingQuestionType | ListeningQuestionType | WritingTaskType | SpeakingPartType;
 
 // Question counts based on question type
 export const QUESTION_COUNTS: Record<string, number> = {
@@ -37,6 +43,14 @@ export const QUESTION_COUNTS: Record<string, number> = {
   'MULTIPLE_CHOICE_MULTIPLE': 3,
   'MATCHING_CORRECT_LETTER': 5,
   'TABLE_COMPLETION': 5,
+  // Writing - 1 task
+  'TASK_1': 1,
+  'TASK_2': 1,
+  // Speaking - varies by part
+  'FULL_TEST': 12,
+  'PART_1': 4,
+  'PART_2': 1,
+  'PART_3': 4,
 };
 
 // Default times based on question count
@@ -89,6 +103,39 @@ export interface GeneratedPassage {
   passage_number: number;
 }
 
+// Writing task structure
+export interface GeneratedWritingTask {
+  id: string;
+  task_type: 'task1' | 'task2';
+  instruction: string;
+  text_content?: string;
+  image_base64?: string; // For Task 1 charts/graphs
+  image_description?: string;
+  word_limit_min: number;
+  word_limit_max?: number;
+}
+
+// Speaking part structure
+export interface GeneratedSpeakingPart {
+  id: string;
+  part_number: 1 | 2 | 3;
+  instruction: string;
+  questions: GeneratedSpeakingQuestion[];
+  cue_card_topic?: string; // For Part 2
+  cue_card_content?: string; // For Part 2 - bullet points
+  preparation_time_seconds?: number; // For Part 2
+  speaking_time_seconds?: number; // For Part 2
+  time_limit_seconds?: number; // For Parts 1 & 3
+}
+
+export interface GeneratedSpeakingQuestion {
+  id: string;
+  question_number: number;
+  question_text: string;
+  audio_base64?: string; // TTS audio for the question
+  sample_answer?: string;
+}
+
 // Generated test structure
 export interface GeneratedTest {
   id: string;
@@ -102,9 +149,13 @@ export interface GeneratedTest {
   audioFormat?: string;
   sampleRate?: number;
   transcript?: string; // For listening
-  questionGroups: GeneratedQuestionGroup[];
+  questionGroups?: GeneratedQuestionGroup[]; // For reading/listening
   totalQuestions: number;
   generatedAt: string;
+  // Writing specific
+  writingTask?: GeneratedWritingTask;
+  // Speaking specific
+  speakingParts?: GeneratedSpeakingPart[];
 }
 
 // Practice result

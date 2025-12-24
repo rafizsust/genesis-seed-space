@@ -22,14 +22,17 @@ import {
   Target, 
   Zap,
   Brain,
-  
-  Settings2
+  Settings2,
+  PenTool,
+  Mic
 } from 'lucide-react';
 import { 
   PracticeModule, 
   DifficultyLevel, 
   ReadingQuestionType, 
   ListeningQuestionType,
+  WritingTaskType,
+  SpeakingPartType,
   QUESTION_COUNTS,
   getDefaultTime,
   saveGeneratedTest,
@@ -56,6 +59,18 @@ const LISTENING_QUESTION_TYPES: { value: ListeningQuestionType; label: string; d
   { value: 'TABLE_COMPLETION', label: 'Table Completion', description: 'Complete a table with information' },
 ];
 
+const WRITING_TASK_TYPES: { value: WritingTaskType; label: string; description: string }[] = [
+  { value: 'TASK_1', label: 'Task 1 (Report)', description: 'Describe visual data (chart, graph, diagram)' },
+  { value: 'TASK_2', label: 'Task 2 (Essay)', description: 'Write an essay on a given topic' },
+];
+
+const SPEAKING_PART_TYPES: { value: SpeakingPartType; label: string; description: string }[] = [
+  { value: 'FULL_TEST', label: 'Full Test', description: 'All 3 parts (11-14 minutes)' },
+  { value: 'PART_1', label: 'Part 1 Only', description: 'Introduction and interview' },
+  { value: 'PART_2', label: 'Part 2 Only', description: 'Individual long turn with cue card' },
+  { value: 'PART_3', label: 'Part 3 Only', description: 'Discussion and abstract topics' },
+];
+
 const DIFFICULTY_OPTIONS: { value: DifficultyLevel; label: string; color: string }[] = [
   { value: 'easy', label: 'Easy', color: 'bg-success/20 text-success border-success/30' },
   { value: 'medium', label: 'Medium', color: 'bg-warning/20 text-warning border-warning/30' },
@@ -71,6 +86,8 @@ export default function AIPractice() {
   const [activeModule, setActiveModule] = useState<PracticeModule>('reading');
   const [readingQuestionType, setReadingQuestionType] = useState<ReadingQuestionType>('TRUE_FALSE_NOT_GIVEN');
   const [listeningQuestionType, setListeningQuestionType] = useState<ListeningQuestionType>('FILL_IN_BLANK');
+  const [writingTaskType, setWritingTaskType] = useState<WritingTaskType>('TASK_1');
+  const [speakingPartType, setSpeakingPartType] = useState<SpeakingPartType>('FULL_TEST');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('medium');
   const [topicPreference, setTopicPreference] = useState('');
   const [timeMinutes, setTimeMinutes] = useState(10);
@@ -80,24 +97,19 @@ export default function AIPractice() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
 
-  const currentQuestionType = activeModule === 'reading' ? readingQuestionType : listeningQuestionType;
+  const currentQuestionType = activeModule === 'reading' ? readingQuestionType 
+    : activeModule === 'listening' ? listeningQuestionType
+    : activeModule === 'writing' ? writingTaskType
+    : speakingPartType;
   const questionCount = QUESTION_COUNTS[currentQuestionType] || 5;
 
   const progressSteps = activeModule === 'reading' 
-    ? [
-        'Analyzing topic requirements',
-        'Generating IELTS passage',
-        'Creating questions & answers',
-        'Preparing explanations',
-        'Finalizing test'
-      ]
-    : [
-        'Analyzing topic requirements',
-        'Generating dialogue script',
-        'Creating audio with AI voices',
-        'Generating questions',
-        'Finalizing test'
-      ];
+    ? ['Analyzing topic', 'Generating passage', 'Creating questions', 'Preparing explanations', 'Finalizing']
+    : activeModule === 'listening'
+    ? ['Analyzing topic', 'Generating dialogue', 'Creating audio', 'Generating questions', 'Finalizing']
+    : activeModule === 'writing'
+    ? ['Analyzing topic', 'Creating prompt', writingTaskType === 'TASK_1' ? 'Generating chart/graph' : 'Preparing task', 'Finalizing']
+    : ['Analyzing topic', 'Creating questions', 'Generating audio prompts', 'Preparing cue card', 'Finalizing'];
 
   const handleGenerate = async () => {
     if (!user) {
@@ -235,14 +247,22 @@ export default function AIPractice() {
 
           {/* Module Tabs */}
           <Tabs value={activeModule} onValueChange={(v) => setActiveModule(v as PracticeModule)} className="mb-6">
-            <TabsList className="grid w-full grid-cols-2 h-auto p-1">
+            <TabsList className="grid w-full grid-cols-4 h-auto p-1">
               <TabsTrigger value="reading" className="flex items-center gap-2 py-3">
-                <BookOpen className="w-5 h-5" />
-                <span>Reading</span>
+                <BookOpen className="w-4 h-4" />
+                <span className="hidden sm:inline">Reading</span>
               </TabsTrigger>
               <TabsTrigger value="listening" className="flex items-center gap-2 py-3">
-                <Headphones className="w-5 h-5" />
-                <span>Listening</span>
+                <Headphones className="w-4 h-4" />
+                <span className="hidden sm:inline">Listening</span>
+              </TabsTrigger>
+              <TabsTrigger value="writing" className="flex items-center gap-2 py-3">
+                <PenTool className="w-4 h-4" />
+                <span className="hidden sm:inline">Writing</span>
+              </TabsTrigger>
+              <TabsTrigger value="speaking" className="flex items-center gap-2 py-3">
+                <Mic className="w-4 h-4" />
+                <span className="hidden sm:inline">Speaking</span>
               </TabsTrigger>
             </TabsList>
 
@@ -339,6 +359,79 @@ export default function AIPractice() {
                       <span>Slower</span>
                       <span>Normal</span>
                       <span>Faster</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="writing" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PenTool className="w-5 h-5 text-primary" />
+                    Writing Practice Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Generate writing tasks with AI evaluation after submission
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-3">
+                    <Label className="text-base font-medium">Task Type</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {WRITING_TASK_TYPES.map((type) => (
+                        <button
+                          key={type.value}
+                          onClick={() => setWritingTaskType(type.value)}
+                          className={`p-4 rounded-lg border-2 text-left transition-all ${
+                            writingTaskType === type.value
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                        >
+                          <div className="font-medium">{type.label}</div>
+                          <div className="text-sm text-muted-foreground">{type.description}</div>
+                          <Badge variant="secondary" className="mt-2">
+                            {type.value === 'TASK_1' ? '150+ words' : '250+ words'}
+                          </Badge>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="speaking" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mic className="w-5 h-5 text-primary" />
+                    Speaking Practice Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Practice with AI examiner - questions read aloud, you record responses
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-3">
+                    <Label className="text-base font-medium">Test Parts</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {SPEAKING_PART_TYPES.map((type) => (
+                        <button
+                          key={type.value}
+                          onClick={() => setSpeakingPartType(type.value)}
+                          className={`p-4 rounded-lg border-2 text-left transition-all ${
+                            speakingPartType === type.value
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                        >
+                          <div className="font-medium">{type.label}</div>
+                          <div className="text-sm text-muted-foreground">{type.description}</div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </CardContent>

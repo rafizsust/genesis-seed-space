@@ -199,7 +199,7 @@ export default function AIPracticeResults() {
             <CardContent>
               <div className="space-y-4">
                 {result.questionResults.map((qResult) => {
-                  const question = test.questionGroups
+                  const question = (test.questionGroups || [])
                     .flatMap(g => g.questions)
                     .find(q => q.question_number === qResult.questionNumber);
                   
