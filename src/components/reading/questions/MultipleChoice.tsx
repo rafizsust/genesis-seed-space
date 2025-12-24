@@ -101,10 +101,7 @@ export function MultipleChoice({
                   id={`q${question.question_number}-${idx}`}
                   className="ielts-mcq-indicator"
                 />
-                <span className="text-sm leading-relaxed flex items-baseline gap-2">
-                  <span className="font-bold flex-shrink-0">
-                    {optionLabel}.
-                  </span>
+                <span className="text-sm leading-relaxed flex-1">
                   <QuestionTextWithTools
                     testId={testId}
                     contentId={`${question.id}-option-${idx}`}
@@ -174,10 +171,7 @@ export function MultipleChoice({
               onCheckedChange={(checked) => handleCheckboxChange(option, checked as boolean)}
               className="ielts-checkbox"
             />
-            <span className="text-sm leading-relaxed flex items-baseline gap-2">
-              <span className="font-bold flex-shrink-0">
-                {optionLabel}.
-              </span>
+            <span className="text-sm leading-relaxed flex-1">
               <QuestionTextWithTools
                 testId={testId}
                 contentId={`${question.id}-option-${idx}`}
