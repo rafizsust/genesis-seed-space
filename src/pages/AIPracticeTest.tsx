@@ -37,20 +37,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 
 export default function AIPracticeTest() {
   const { testId } = useParams<{ testId: string }>();
@@ -282,7 +268,6 @@ export default function AIPracticeTest() {
     );
   }
 
-  const allQuestions = test.questionGroups.flatMap(g => g.questions);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -433,7 +418,7 @@ export default function AIPracticeTest() {
           <Card>
             <CardContent className="p-4 md:p-6">
               <ScrollArea className="h-[calc(100vh-250px)]">
-                {test.questionGroups.map((group, groupIndex) => (
+                {test.questionGroups.map((group) => (
                   <div key={group.id} className="mb-8">
                     <div className="mb-4 p-3 bg-muted rounded-lg">
                       <p className="text-sm font-medium">{group.instruction}</p>

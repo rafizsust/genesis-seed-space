@@ -24,7 +24,6 @@ import {
   Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { cn } from '@/lib/utils';
 
 export default function AIPracticeResults() {
   const { testId } = useParams<{ testId: string }>();
