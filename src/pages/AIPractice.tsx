@@ -300,7 +300,32 @@ export default function AIPractice() {
     return { text: '60-90 seconds', seconds: 75 };
   };
 
+  // Calculate estimated generation time for reading based on passage length
+  const getReadingEstimate = () => {
+    const wordCount = readingPassagePreset === 'custom'
+      ? (useWordCountMode ? customWordCount : customParagraphCount * 120)
+      : READING_PASSAGE_PRESETS[readingPassagePreset].wordCount;
+    
+    if (wordCount <= 500) return { text: '10-20 seconds', seconds: 15 };
+    if (wordCount <= 750) return { text: '15-25 seconds', seconds: 20 };
+    return { text: '20-35 seconds', seconds: 27 };
+  };
+
   const listeningEstimate = getListeningEstimate();
+  const readingEstimate = getReadingEstimate();
+
+  // Get estimate based on active module
+  const getModuleEstimate = () => {
+    switch (activeModule) {
+      case 'listening': return listeningEstimate;
+      case 'reading': return readingEstimate;
+      case 'writing': return { text: '10-20 seconds', seconds: 15 };
+      case 'speaking': return { text: '15-25 seconds', seconds: 20 };
+      default: return { text: '15-30 seconds', seconds: 22 };
+    }
+  };
+
+  const moduleEstimate = getModuleEstimate();
 
   if (isGenerating) {
     return (
@@ -309,8 +334,8 @@ export default function AIPractice() {
         description={`Creating a personalized ${activeModule} test with ${questionCount} ${currentQuestionType.replace(/_/g, ' ').toLowerCase()} questions.`}
         progressSteps={progressSteps}
         currentStepIndex={generationStep}
-        estimatedTime={activeModule === 'listening' ? listeningEstimate.text : '15-30 seconds'}
-        estimatedSeconds={activeModule === 'listening' ? listeningEstimate.seconds : 22}
+        estimatedTime={moduleEstimate.text}
+        estimatedSeconds={moduleEstimate.seconds}
       />
     );
   }
