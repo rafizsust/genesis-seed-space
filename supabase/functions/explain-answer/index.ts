@@ -62,10 +62,11 @@ serve(async (req) => {
     const systemPrompt = `You are an expert ${testTypeLabel} tutor. Your task is to explain ${isCorrect ? 'why a student\'s answer was correct' : 'why a student\'s answer was incorrect'} in a helpful and educational way.
 
 Guidelines:
-- Be concise but thorough (3-5 sentences)
-- ${isCorrect ? 'Explain what made this the correct answer and reinforce the key concept' : 'Explain why the correct answer is right and why the student\'s answer is wrong'}
+- Be concise but thorough (4-6 sentences)
+- ${isCorrect ? 'Explain what made this the correct answer and reinforce the key concept' : 'IMPORTANT: First explain specifically why the student\'s answer is wrong (what makes it incorrect, what concept they may have misunderstood). Then explain why the correct answer is right.'}
+- ${!isCorrect && userAnswer ? 'Address the student\'s specific wrong answer directly - explain what that option/answer actually refers to and why it doesn\'t fit the question' : ''}
 - ${testType === 'listening' ? 'If transcript context is provided, reference the specific part that contains the answer' : 'If passage context is provided, reference the specific part of the text that supports the answer'}
-- If options are provided, explain why the correct option is right and others are wrong
+- If options are provided, explain why the correct option is right and briefly why the student\'s chosen option is wrong
 - Provide helpful tips for similar questions in the future
 - Be encouraging and supportive
 - Use simple, clear language

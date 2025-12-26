@@ -421,9 +421,24 @@ export default function AIPracticeReadingTest() {
     if (!questionGroupId) return [];
     const group = questionGroups.find(g => g.id === questionGroupId);
     const raw = (group?.options || {}) as any;
-    if (Array.isArray(group?.options)) return group.options as any;
-    if (Array.isArray(raw?.sentence_endings)) return raw.sentence_endings as string[];
-    if (Array.isArray(raw?.options)) return raw.options as string[];
+    
+    // Handle sentence_endings array (AI-generated format: [{id, text}] or string[])
+    if (Array.isArray(raw?.sentence_endings)) {
+      return raw.sentence_endings.map((e: any) => 
+        typeof e === 'string' ? e : `${e.id || ''} ${e.text || ''}`.trim()
+      );
+    }
+    // Handle direct array format
+    if (Array.isArray(group?.options)) {
+      return (group.options as any[]).map((e: any) => 
+        typeof e === 'string' ? e : `${e.id || ''} ${e.text || ''}`.trim()
+      );
+    }
+    if (Array.isArray(raw?.options)) {
+      return raw.options.map((e: any) => 
+        typeof e === 'string' ? e : `${e.id || ''} ${e.text || ''}`.trim()
+      );
+    }
     return [];
   }, [questionGroups]);
 

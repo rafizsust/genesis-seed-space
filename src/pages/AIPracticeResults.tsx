@@ -438,16 +438,18 @@ export default function AIPracticeResults() {
                                 "font-medium",
                                 qResult.isCorrect ? "text-success" : "text-destructive"
                               )}>
-                                {qResult.userAnswer || '(No answer)'}
+                                {qResult.userAnswer 
+                                  ? qResult.userAnswer.split(',').join(', ')  // Format comma-separated answers nicely
+                                  : '(No answer)'}
                               </p>
                             </div>
                             
-                            {!qResult.isCorrect && (
-                              <div>
-                                <p className="text-sm font-medium text-muted-foreground mb-1">Correct Answer</p>
-                                <p className="font-medium text-success">{qResult.correctAnswer}</p>
-                              </div>
-                            )}
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Correct Answer</p>
+                              <p className="font-medium text-success">
+                                {qResult.correctAnswer.split(',').join(', ')}
+                              </p>
+                            </div>
                           </div>
 
                           <div className="bg-muted/50 rounded-lg p-4">
