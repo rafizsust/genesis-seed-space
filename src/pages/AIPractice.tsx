@@ -98,16 +98,14 @@ const READING_PASSAGE_PRESETS = {
   custom: { paragraphs: 0, wordCount: 0, label: 'Custom' },
 };
 
-// Listening configuration - Gemini free tier limits:
-// - Audio TTS uses ~150 bytes per character for MP3
-// - Free tier: ~15 minutes of audio generation per day
-// - Keep requests to 70% capacity = ~2 minutes of audio max per request
+// Listening configuration - Gemini TTS limits:
 // - ~150 words per minute of speech at normal pace
-// - Max ~300 words of transcript per request to stay safe
+// - Max ~10 minutes per request, using 85% capacity = 8 min max
+// - Max ~1,200 words of transcript per request
 const LISTENING_TRANSCRIPT_PRESETS = {
-  brief: { durationSeconds: 60, wordCount: 150, label: 'Brief (1 min, ~150 words)' },
-  standard: { durationSeconds: 90, wordCount: 225, label: 'Standard (1.5 min, ~225 words)' },
-  extended: { durationSeconds: 120, wordCount: 300, label: 'Extended (2 min, ~300 words)' },
+  short: { durationSeconds: 120, wordCount: 300, label: 'Short (2 min, ~300 words)' },
+  standard: { durationSeconds: 300, wordCount: 750, label: 'Standard (5 min, ~750 words)' },
+  full: { durationSeconds: 480, wordCount: 1200, label: 'Full (8 min, ~1,200 words)' },
   custom: { durationSeconds: 0, wordCount: 0, label: 'Custom' },
 };
 
@@ -609,12 +607,12 @@ export default function AIPractice() {
                             <Slider
                               value={[customTranscriptWordCount]}
                               onValueChange={([v]) => setCustomTranscriptWordCount(v)}
-                              min={100}
-                              max={300}
-                              step={25}
+                              min={150}
+                              max={1200}
+                              step={50}
                             />
                             <p className="text-xs text-muted-foreground">
-                              ~{Math.round(customTranscriptWordCount / 150 * 60)} seconds of audio
+                              ~{Math.round(customTranscriptWordCount / 150)} min of audio
                             </p>
                           </div>
                         ) : (
@@ -626,12 +624,12 @@ export default function AIPractice() {
                             <Slider
                               value={[customTranscriptDuration]}
                               onValueChange={([v]) => setCustomTranscriptDuration(v)}
-                              min={30}
-                              max={120}
-                              step={15}
+                              min={60}
+                              max={480}
+                              step={30}
                             />
                             <p className="text-xs text-muted-foreground">
-                              ~{Math.round(customTranscriptDuration / 60 * 150)} words of dialogue
+                              ~{Math.round(customTranscriptDuration / 60 * 150)} words (~{Math.round(customTranscriptDuration / 60)} min)
                             </p>
                           </div>
                         )}
