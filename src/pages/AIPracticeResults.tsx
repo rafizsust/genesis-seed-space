@@ -426,12 +426,44 @@ export default function AIPracticeResults() {
                   const isExpanded = expandedQuestions.has(qResult.questionNumber);
                   const chatState = questionChats[qResult.questionNumber] || { messages: [], isLoading: false, isOpen: false };
 
+                  // Detect MCMA grouped result
+                  const isMCMAGroup = qResult.questionType === 'MULTIPLE_CHOICE_MULTIPLE' && 
+                                      qResult.questionNumbers && qResult.questionNumbers.length > 1;
+                  
+                  // For MCMA: parse letters for highlighting
+                  const userLetters = qResult.userAnswer ? qResult.userAnswer.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
+                  const correctLetters = qResult.correctAnswer ? qResult.correctAnswer.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [];
+                  
+                  // Determine border color for MCMA (partial vs full)
+                  const mcmaHasPartialCorrect = isMCMAGroup && (qResult.partialScore || 0) > 0;
+                  const mcmaFullyCorrect = isMCMAGroup && qResult.isCorrect;
+                  const mcmaAllWrong = isMCMAGroup && (qResult.partialScore || 0) === 0;
+                  
+                  const getBorderColor = () => {
+                    if (!isMCMAGroup) return qResult.isCorrect ? "border-success/30" : "border-destructive/30";
+                    if (mcmaFullyCorrect) return "border-success/30";
+                    if (mcmaAllWrong) return "border-destructive/30";
+                    return "border-warning/30"; // partial
+                  };
+                  
+                  const getHeaderBg = () => {
+                    if (!isMCMAGroup) return qResult.isCorrect ? "bg-success/5 hover:bg-success/10" : "bg-destructive/5 hover:bg-destructive/10";
+                    if (mcmaFullyCorrect) return "bg-success/5 hover:bg-success/10";
+                    if (mcmaAllWrong) return "bg-destructive/5 hover:bg-destructive/10";
+                    return "bg-warning/5 hover:bg-warning/10";
+                  };
+                  
+                  // Question range label for MCMA
+                  const questionLabel = isMCMAGroup 
+                    ? `${qResult.questionNumbers![0]}-${qResult.questionNumbers![qResult.questionNumbers!.length - 1]}`
+                    : String(qResult.questionNumber);
+
                   return (
                     <div 
                       key={qResult.questionNumber}
                       className={cn(
                         "border rounded-lg overflow-hidden transition-all",
-                        qResult.isCorrect ? "border-success/30" : "border-destructive/30"
+                        getBorderColor()
                       )}
                     >
                       {/* Question Header */}
@@ -439,32 +471,44 @@ export default function AIPracticeResults() {
                         onClick={() => toggleQuestion(qResult.questionNumber)}
                         className={cn(
                           "w-full flex items-center justify-between p-4 text-left transition-colors",
-                          qResult.isCorrect 
-                            ? "bg-success/5 hover:bg-success/10" 
-                            : "bg-destructive/5 hover:bg-destructive/10"
+                          getHeaderBg()
                         )}
                       >
                         <div className="flex items-center gap-3">
                           <Badge 
                             variant="outline"
                             className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center p-0",
-                              qResult.isCorrect 
+                              "min-w-8 h-8 rounded-full flex items-center justify-center px-2",
+                              mcmaFullyCorrect || (!isMCMAGroup && qResult.isCorrect)
                                 ? "bg-success text-success-foreground border-success"
-                                : "bg-destructive text-destructive-foreground border-destructive"
+                                : mcmaHasPartialCorrect
+                                  ? "bg-warning text-warning-foreground border-warning"
+                                  : "bg-destructive text-destructive-foreground border-destructive"
                             )}
                           >
-                            {qResult.questionNumber}
+                            {questionLabel}
                           </Badge>
                           
-                          {qResult.isCorrect ? (
+                          {isMCMAGroup ? (
+                            mcmaFullyCorrect ? (
+                              <CheckCircle2 className="w-5 h-5 text-success" />
+                            ) : mcmaHasPartialCorrect ? (
+                              <span className="text-sm font-medium text-warning">
+                                {qResult.partialScore}/{qResult.maxScore}
+                              </span>
+                            ) : (
+                              <XCircle className="w-5 h-5 text-destructive" />
+                            )
+                          ) : qResult.isCorrect ? (
                             <CheckCircle2 className="w-5 h-5 text-success" />
                           ) : (
                             <XCircle className="w-5 h-5 text-destructive" />
                           )}
                           
                           <span className="text-sm font-medium line-clamp-1">
-                            {question?.question_text || `Question ${qResult.questionNumber}`}
+                            {isMCMAGroup 
+                              ? `Multiple Choice (Choose ${qResult.maxScore})`
+                              : question?.question_text || `Question ${qResult.questionNumber}`}
                           </span>
                         </div>
                         
@@ -478,59 +522,126 @@ export default function AIPracticeResults() {
                       {/* Expanded Details */}
                       {isExpanded && (
                         <div className="p-4 border-t space-y-4">
+                          {/* Question text */}
                           <div>
                             <p className="text-sm font-medium text-muted-foreground mb-1">Question</p>
                             <p>{question?.question_text}</p>
                           </div>
 
-                          {(() => {
-                            const type = question?.question_type;
-
-                            const renderSentenceEnding = (value: string) => {
-                              const id = extractOptionId(value);
-                              const map = sentenceEndingOptionByQuestionNumber[qResult.questionNumber];
-                              const full = map?.get(id);
-                              const text = full ? extractOptionText(full) : '';
-                              return text ? `${id}. ${text}` : id;
-                            };
-
-                            const renderAnswers = (value: string, kind: 'user' | 'correct') => {
-                              if (!value) return kind === 'user' ? '(No answer)' : '';
-
-                              if (type === 'MATCHING_SENTENCE_ENDINGS') {
-                                return renderSentenceEnding(value);
-                              }
-
-                              if (type === 'MULTIPLE_CHOICE_MULTIPLE') {
-                                return value.split(',').map((v) => v.trim()).filter(Boolean).join(', ');
-                              }
-
-                              return value;
-                            };
-
-                            return (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <p className="text-sm font-medium text-muted-foreground mb-1">Your Answer</p>
-                                  <p
-                                    className={cn(
-                                      "font-medium",
-                                      qResult.isCorrect ? "text-success" : "text-destructive"
-                                    )}
-                                  >
-                                    {renderAnswers(qResult.userAnswer, 'user')}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <p className="text-sm font-medium text-muted-foreground mb-1">Correct Answer</p>
-                                  <p className="font-medium text-success">
-                                    {renderAnswers(qResult.correctAnswer, 'correct')}
-                                  </p>
+                          {/* MCMA: Show highlighted letter selections */}
+                          {isMCMAGroup ? (
+                            <div className="space-y-4">
+                              {/* Your Selections with highlighting */}
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground mb-2">Your Selections</p>
+                                {userLetters.length === 0 ? (
+                                  <p className="text-destructive">(No answer)</p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-2">
+                                    {userLetters.map((letter) => {
+                                      const isCorrectSelection = correctLetters.includes(letter);
+                                      return (
+                                        <Badge
+                                          key={letter}
+                                          variant="outline"
+                                          className={cn(
+                                            "px-3 py-1 text-sm font-medium",
+                                            isCorrectSelection
+                                              ? "bg-success/20 text-success border-success/50"
+                                              : "bg-destructive/20 text-destructive border-destructive/50"
+                                          )}
+                                        >
+                                          {letter} {isCorrectSelection ? '✓' : '✗'}
+                                        </Badge>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Correct Answers */}
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground mb-2">Correct Answers</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {correctLetters.map((letter) => {
+                                    const wasSelected = userLetters.includes(letter);
+                                    return (
+                                      <Badge
+                                        key={letter}
+                                        variant="outline"
+                                        className={cn(
+                                          "px-3 py-1 text-sm font-medium",
+                                          wasSelected
+                                            ? "bg-success/20 text-success border-success/50"
+                                            : "bg-muted text-muted-foreground border-muted-foreground/30"
+                                        )}
+                                      >
+                                        {letter} {wasSelected ? '✓' : '(missed)'}
+                                      </Badge>
+                                    );
+                                  })}
                                 </div>
                               </div>
-                            );
-                          })()}
+                              
+                              {/* Score summary */}
+                              <div className="bg-muted/30 rounded-lg p-3">
+                                <p className="text-sm">
+                                  <strong>Score:</strong> {qResult.partialScore}/{qResult.maxScore} correct
+                                  {qResult.partialScore === qResult.maxScore 
+                                    ? ' — Perfect!' 
+                                    : qResult.partialScore === 0 
+                                      ? '' 
+                                      : ` — Partial credit`}
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Non-MCMA: Original answer display */
+                            (() => {
+                              const type = question?.question_type || qResult.questionType;
+
+                              const renderSentenceEnding = (value: string) => {
+                                const id = extractOptionId(value);
+                                const map = sentenceEndingOptionByQuestionNumber[qResult.questionNumber];
+                                const full = map?.get(id);
+                                const text = full ? extractOptionText(full) : '';
+                                return text ? `${id}. ${text}` : id;
+                              };
+
+                              const renderAnswers = (value: string, kind: 'user' | 'correct') => {
+                                if (!value) return kind === 'user' ? '(No answer)' : '';
+
+                                if (type === 'MATCHING_SENTENCE_ENDINGS') {
+                                  return renderSentenceEnding(value);
+                                }
+
+                                return value;
+                              };
+
+                              return (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground mb-1">Your Answer</p>
+                                    <p
+                                      className={cn(
+                                        "font-medium",
+                                        qResult.isCorrect ? "text-success" : "text-destructive"
+                                      )}
+                                    >
+                                      {renderAnswers(qResult.userAnswer, 'user')}
+                                    </p>
+                                  </div>
+
+                                  <div>
+                                    <p className="text-sm font-medium text-muted-foreground mb-1">Correct Answer</p>
+                                    <p className="font-medium text-success">
+                                      {renderAnswers(qResult.correctAnswer, 'correct')}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          )}
 
                           <div className="bg-muted/50 rounded-lg p-4">
                             <p className="text-sm font-medium text-muted-foreground mb-1">Explanation</p>

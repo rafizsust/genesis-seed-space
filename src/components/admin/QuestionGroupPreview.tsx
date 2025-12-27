@@ -546,7 +546,7 @@ export function QuestionGroupPreview({ group, paragraphLabels = [] }: QuestionGr
         <MatchingInformation
           questions={matchingQuestions}
           options={matchingOptions}
-          optionsTitle={group.options_title || 'List of Paragraphs'}
+          optionsTitle={group.options_title || 'List of Information'}
           answers={previewAnswers}
           onAnswerChange={handleAnswerChange}
           currentQuestion={currentQuestion}

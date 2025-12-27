@@ -700,12 +700,12 @@ export function QuestionGroupEditor({
                             <div className="space-y-2">
                               <Label className="font-medium">Options List Title</Label>
                               <p className="text-xs text-muted-foreground">
-                                Title shown above the options list (e.g., "List of Paragraphs", "List of Sections")
+                                Title shown above the options list (e.g., "List of Information", "List of Sections")
                               </p>
                               <Input
                                 value={group.options_title || ''}
                                 onChange={(e) => updateGroup(groupIndex, { options_title: e.target.value })}
-                                placeholder="List of Paragraphs"
+                                placeholder="List of Information"
                               />
                             </div>
                           </div>

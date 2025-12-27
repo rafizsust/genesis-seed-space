@@ -324,35 +324,103 @@ export default function AIPracticeReadingTest() {
 
     const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
     
-    const questionResults: QuestionResult[] = questions.map(q => {
+    // Build question results with MCMA group handling
+    const questionResults: QuestionResult[] = [];
+    const processedQuestionNumbers = new Set<number>();
+    
+    // Process MCMA groups first (one result per group with partial scoring)
+    for (const group of questionGroups) {
+      if (group.question_type === 'MULTIPLE_CHOICE_MULTIPLE') {
+        const rangeNumbers: number[] = [];
+        for (let n = group.start_question; n <= group.end_question; n++) {
+          rangeNumbers.push(n);
+          processedQuestionNumbers.add(n);
+        }
+        
+        // User's answer is stored on start_question only
+        const userAnswerRaw = answers[group.start_question]?.trim() || '';
+        const userLetters = userAnswerRaw
+          .split(',')
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean);
+        
+        // Get correct answer from the first question in group (all share same correct_answer)
+        const firstQ = questions.find(q => q.question_number === group.start_question);
+        const correctAnswerRaw = firstQ?.correct_answer || '';
+        const correctLetters = correctAnswerRaw
+          .split(',')
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean);
+        
+        // Partial scoring: count how many user selections are correct
+        const correctSelections = userLetters.filter(l => correctLetters.includes(l));
+        const partialScore = correctSelections.length;
+        const maxScore = correctLetters.length;
+        const isFullyCorrect = partialScore === maxScore && userLetters.length === maxScore;
+        
+        // Get explanation from original test data
+        const originalQ = test.questionGroups?.flatMap(g => g.questions).find(
+          oq => oq.question_number === group.start_question
+        );
+        
+        questionResults.push({
+          questionNumber: group.start_question,
+          questionNumbers: rangeNumbers,
+          userAnswer: userLetters.join(','),
+          correctAnswer: correctLetters.join(','),
+          isCorrect: isFullyCorrect,
+          partialScore,
+          maxScore,
+          explanation: originalQ?.explanation || '',
+          questionType: 'MULTIPLE_CHOICE_MULTIPLE',
+        });
+      }
+    }
+    
+    // Process remaining questions (non-MCMA)
+    for (const q of questions) {
+      if (processedQuestionNumbers.has(q.question_number)) continue;
+      
       const userAnswer = answers[q.question_number]?.trim() || '';
       const correctAnswer = q.correct_answer;
       
-      // Get question type for proper validation
       const questionType = q.question_type || 
         test.questionGroups?.find(g => 
           g.questions.some(gq => gq.question_number === q.question_number)
         )?.question_type;
 
-      // Use IELTS-aware answer checking with question type
       const isCorrect = checkAnswer(userAnswer, correctAnswer, questionType);
       
-      // Get explanation from original test data
       const originalQ = test.questionGroups?.flatMap(g => g.questions).find(
         oq => oq.question_number === q.question_number
       );
       
-      return {
+      questionResults.push({
         questionNumber: q.question_number,
         userAnswer,
         correctAnswer,
         isCorrect,
         explanation: originalQ?.explanation || '',
-      };
-    });
+        questionType,
+      });
+    }
 
-    const score = questionResults.filter(r => r.isCorrect).length;
-    const total = questionResults.length;
+    // Sort by question number
+    questionResults.sort((a, b) => a.questionNumber - b.questionNumber);
+
+    // Calculate score: sum partial scores for MCMA, 1 for correct others
+    let score = 0;
+    let total = 0;
+    for (const r of questionResults) {
+      if (r.questionType === 'MULTIPLE_CHOICE_MULTIPLE' && r.maxScore !== undefined) {
+        score += r.partialScore || 0;
+        total += r.maxScore;
+      } else {
+        if (r.isCorrect) score += 1;
+        total += 1;
+      }
+    }
+    
     const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
     
     const calculateBandScore = (pct: number): number => {

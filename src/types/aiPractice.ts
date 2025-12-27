@@ -196,10 +196,14 @@ export interface PracticeResult {
 
 export interface QuestionResult {
   questionNumber: number;
+  questionNumbers?: number[]; // For grouped questions (MCMA: e.g., [1,2,3])
   userAnswer: string;
   correctAnswer: string;
   isCorrect: boolean;
+  partialScore?: number; // For partial marks (e.g., 2 out of 3 correct)
+  maxScore?: number; // Total possible marks for this result
   explanation: string;
+  questionType?: string; // To help with rendering
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

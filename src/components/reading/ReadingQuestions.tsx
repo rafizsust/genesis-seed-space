@@ -664,7 +664,7 @@ export function ReadingQuestions({
                       ? getQuestionGroupOptions(firstQuestionInGroup.question_group_id || null)
                       : null;
                     const groupOptions = groupData?.options as any;
-                    const optionsTitle = groupOptions?.options_title || 'List of Paragraphs';
+                    const optionsTitle = groupOptions?.options_title || 'List of Information';
                     
                     // Get options array - AI format: {options: [{letter, text}]} or [{letter, text}] directly
                     let optionsArray: any[] = [];
