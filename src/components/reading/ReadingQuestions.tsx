@@ -507,7 +507,34 @@ export function ReadingQuestions({
                         ? groupOptionsData 
                         : [];
                     const optionFormat = groupOptionsData?.option_format || groupData?.option_format || 'A';
-                    const maxAnswersForGroup = groupOptionsData?.max_answers || groupData?.max_answers || 2;
+
+                    // Prefer explicit max_answers from group options; otherwise infer from question text ("Which TWO/THREE...").
+                    const inferMaxAnswersFromText = (text: string | undefined): number | null => {
+                      if (!text) return null;
+                      const m = text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b\s+(?:statements|answers|options|letters?)\b/i)
+                        || text.match(/\bwhich\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i);
+                      if (!m) return null;
+                      const raw = m[1].toLowerCase();
+                      const map: Record<string, number> = {
+                        one: 1,
+                        two: 2,
+                        three: 3,
+                        four: 4,
+                        five: 5,
+                        six: 6,
+                        seven: 7,
+                        eight: 8,
+                        nine: 9,
+                        ten: 10,
+                      };
+                      if (raw in map) return map[raw];
+                      const asNum = Number(raw);
+                      return Number.isFinite(asNum) && asNum > 0 ? asNum : null;
+                    };
+
+                    const inferred = inferMaxAnswersFromText(firstQuestionInGroup?.question_text);
+                    const maxAnswersForGroup =
+                      groupOptionsData?.max_answers || groupData?.max_answers || inferred || 2;
                     
                     // Calculate question range based on max_answers
                     const startQ = firstQuestionInGroup.question_number;

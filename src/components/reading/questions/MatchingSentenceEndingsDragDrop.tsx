@@ -17,6 +17,23 @@ interface MatchingSentenceEndingsDragDropProps {
   isActive: boolean;
 }
 
+function extractOptionId(option: string): string {
+  // Expected formats:
+  // - "A ..." (IELTS style)
+  // - "A" (just the id)
+  // - Anything else -> return full string
+  const trimmed = option.trim();
+  const m = trimmed.match(/^([A-Z]|\d+|[ivxlcdm]+)\b/i);
+  return (m?.[1] ?? trimmed).toUpperCase();
+}
+
+function extractOptionText(option: string): string {
+  const trimmed = option.trim();
+  const id = extractOptionId(trimmed);
+  const rest = trimmed.replace(new RegExp(`^${id}\\b\\s*`, 'i'), '').trim();
+  return rest.length ? rest : trimmed;
+}
+
 export function MatchingSentenceEndingsDragDrop({
   questions,
   groupOptions: _groupOptions,
@@ -31,14 +48,24 @@ export function MatchingSentenceEndingsDragDrop({
   const [pressedOption, setPressedOption] = useState<string | null>(null);
   const [isDragOverList, setIsDragOverList] = useState(false);
 
+  // Build an id->fullOption map so we can store just the ID (e.g. "B")
+  // but still render the full text in the dropzone.
+  const optionById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const opt of groupOptions) {
+      map.set(extractOptionId(opt), opt);
+    }
+    return map;
+  }, [groupOptions]);
+
   // Get question numbers in THIS group only
   const groupQuestionNumbers = useMemo(
     () => new Set(questions.map((q) => q.question_number)),
     [questions]
   );
 
-  // Get used options (assigned to any question in THIS group only) - filter out empty values
-  const usedOptions = Object.entries(answers)
+  // Get used option IDs (assigned to any question in THIS group only) - filter out empty values
+  const usedOptionIds = Object.entries(answers)
     .filter(([qNum]) => groupQuestionNumbers.has(parseInt(qNum)))
     .map(([, opt]) => opt)
     .filter(Boolean);
@@ -59,16 +86,21 @@ export function MatchingSentenceEndingsDragDrop({
   const handleDrop = (e: React.DragEvent, questionNumber: number) => {
     e.preventDefault();
     const optionValue = e.dataTransfer.getData('optionValue');
-    if (optionValue) {
-      // If dragging from another question, clear it first
-      const fromQuestion = e.dataTransfer.getData('fromQuestion');
-      if (fromQuestion) {
-        onAnswerChange(parseInt(fromQuestion), '');
-      }
-      onAnswerChange(questionNumber, optionValue);
-      // Focus the question in navigation after drop
-      onQuestionFocus?.(questionNumber);
+    if (!optionValue) return;
+
+    const optionId = extractOptionId(optionValue);
+
+    // If dragging from another question, clear it first
+    const fromQuestion = e.dataTransfer.getData('fromQuestion');
+    if (fromQuestion) {
+      onAnswerChange(parseInt(fromQuestion), '');
     }
+
+    // Store the ID (e.g. "B") so scoring compares against correct_answer cleanly
+    onAnswerChange(questionNumber, optionId);
+
+    // Focus the question in navigation after drop
+    onQuestionFocus?.(questionNumber);
   };
 
   const handleRemove = (questionNumber: number) => {
@@ -102,8 +134,9 @@ export function MatchingSentenceEndingsDragDrop({
       {/* Questions with Drop Zones - styled like passage paragraph drop zones */}
       <div className="space-y-3">
         {questions.map((question) => {
-          const assignedOptionValue = answers[question.question_number];
-          const assignedOptionText = groupOptions.find(opt => opt === assignedOptionValue);
+          const assignedOptionId = answers[question.question_number];
+          const fullOption = assignedOptionId ? optionById.get(assignedOptionId) : undefined;
+          const assignedOptionText = fullOption ? extractOptionText(fullOption) : assignedOptionId;
 
           return (
             <div
@@ -121,16 +154,15 @@ export function MatchingSentenceEndingsDragDrop({
                   dangerouslySetInnerHTML={{ __html: question.question_text }}
                 />
               </div>
-              
+
               {/* Drop zone - same style as Matching Headings paragraph drop zones */}
               <SentenceDropZone
                 questionNumber={question.question_number}
-                assignedOption={assignedOptionValue ? { id: assignedOptionValue, text: assignedOptionText || assignedOptionValue } : null}
+                assignedOption={assignedOptionId
+                  ? { id: assignedOptionId, text: assignedOptionText || assignedOptionId }
+                  : null}
                 onDrop={handleDrop}
                 onRemove={handleRemove}
-                groupOptions={groupOptions}
-                answers={answers}
-                onAnswerChange={onAnswerChange}
               />
             </div>
           );
@@ -139,13 +171,11 @@ export function MatchingSentenceEndingsDragDrop({
 
       {/* Available Endings - styled exactly like List of Headings with drag-back support */}
       <div className="space-y-3">
-        <h4 className="text-sm font-bold text-foreground">
-          List of Sentence Endings
-        </h4>
+        <h4 className="text-sm font-bold text-foreground">List of Sentence Endings</h4>
         <div
           className={cn(
-            "inline-block max-w-full p-2 transition-colors",
-            isDragOverList && "bg-[hsl(var(--ielts-ghost))]"
+            'inline-block max-w-full p-2 transition-colors',
+            isDragOverList && 'bg-[hsl(var(--ielts-ghost))]'
           )}
           onDragOver={handleListDragOver}
           onDragLeave={handleListDragLeave}
@@ -153,7 +183,8 @@ export function MatchingSentenceEndingsDragDrop({
         >
           <div className="space-y-1.5">
             {groupOptions.map((option) => {
-              const isUsed = usedOptions.includes(option);
+              const optionId = extractOptionId(option);
+              const isUsed = usedOptionIds.includes(optionId);
               const isPressed = pressedOption === option;
               const isDragging = draggedOption === option;
 
@@ -171,10 +202,10 @@ export function MatchingSentenceEndingsDragDrop({
                     >
                       <span
                         className={cn(
-                          "ielts-drag-option",
-                          "hover:border-[hsl(var(--ielts-drag-hover))]",
-                          isPressed && "opacity-60",
-                          isDragging && "opacity-40 scale-95"
+                          'ielts-drag-option',
+                          'hover:border-[hsl(var(--ielts-drag-hover))]',
+                          isPressed && 'opacity-60',
+                          isDragging && 'opacity-40 scale-95'
                         )}
                       >
                         {option}
@@ -199,20 +230,9 @@ interface SentenceDropZoneProps {
   assignedOption: { id: string; text: string } | null;
   onDrop: (e: React.DragEvent, questionNumber: number) => void;
   onRemove: (questionNumber: number) => void;
-  groupOptions: string[];
-  answers: Record<number, string>;
-  onAnswerChange: (questionNumber: number, answer: string) => void;
 }
 
-function SentenceDropZone({ 
-  questionNumber, 
-  assignedOption, 
-  onDrop, 
-  onRemove: _onRemove,
-  groupOptions: _groupOptions,
-  answers: _answers,
-  onAnswerChange: _onAnswerChange
-}: SentenceDropZoneProps) {
+function SentenceDropZone({ questionNumber, assignedOption, onDrop, onRemove: _onRemove }: SentenceDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
 
@@ -247,13 +267,8 @@ function SentenceDropZone({
   // Filled state: draggable option that matches the heading item shape
   if (assignedOption) {
     return (
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDropInternal}
-        className="ml-5"
-      >
-        <span 
+      <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDropInternal} className="ml-5">
+        <span
           draggable
           onMouseDown={() => setIsPressed(true)}
           onMouseUp={() => setIsPressed(false)}
@@ -261,13 +276,16 @@ function SentenceDropZone({
           onDragStart={handleFilledDragStart}
           onDragEnd={handleFilledDragEnd}
           className={cn(
-            "ielts-drag-option cursor-move",
-            "hover:border-[hsl(var(--ielts-drag-hover))]",
-            isPressed && "opacity-60",
-            isDragOver && "border-[hsl(var(--ielts-drag-hover))] border-2"
+            'ielts-drag-option cursor-move',
+            'hover:border-[hsl(var(--ielts-drag-hover))]',
+            isPressed && 'opacity-60',
+            isDragOver && 'border-[hsl(var(--ielts-drag-hover))] border-2'
           )}
         >
           {assignedOption.text}
+          {assignedOption.text !== assignedOption.id && (
+            <span className="ml-2 text-xs text-muted-foreground">({assignedOption.id})</span>
+          )}
         </span>
       </div>
     );
@@ -275,18 +293,8 @@ function SentenceDropZone({
 
   // Empty state - matches heading item shape exactly, with question number placeholder
   return (
-    <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDropInternal}
-      className="ml-5"
-    >
-      <span 
-        className={cn(
-          "ielts-drop-zone",
-          isDragOver && "ielts-drop-zone--active"
-        )}
-      >
+    <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDropInternal} className="ml-5">
+      <span className={cn('ielts-drop-zone', isDragOver && 'ielts-drop-zone--active')}>
         {isDragOver ? (
           <span className="text-[hsl(var(--ielts-input-focus))] text-sm">Drop here</span>
         ) : (
@@ -296,3 +304,4 @@ function SentenceDropZone({
     </div>
   );
 }
+
