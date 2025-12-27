@@ -159,7 +159,7 @@ export const MONTH_VARIATIONS: Record<string, string[]> = {
 // ============================================================================
 const NUMBER_WORDS: Record<string, string[]> = {
   '0': ['zero', 'o', 'oh', '0', 'nil', 'nought'],
-  '1': ['one', '1'],
+  '1': ['one', '1', 'a'],
   '2': ['two', '2'],
   '3': ['three', '3'],
   '4': ['four', '4'],
@@ -179,6 +179,15 @@ const NUMBER_WORDS: Record<string, string[]> = {
   '18': ['eighteen', '18'],
   '19': ['nineteen', '19'],
   '20': ['twenty', '20'],
+  '21': ['twenty-one', 'twenty one', 'twentyone', '21'],
+  '22': ['twenty-two', 'twenty two', 'twentytwo', '22'],
+  '23': ['twenty-three', 'twenty three', 'twentythree', '23'],
+  '24': ['twenty-four', 'twenty four', 'twentyfour', '24'],
+  '25': ['twenty-five', 'twenty five', 'twentyfive', '25'],
+  '26': ['twenty-six', 'twenty six', 'twentysix', '26'],
+  '27': ['twenty-seven', 'twenty seven', 'twentyseven', '27'],
+  '28': ['twenty-eight', 'twenty eight', 'twentyeight', '28'],
+  '29': ['twenty-nine', 'twenty nine', 'twentynine', '29'],
   '30': ['thirty', '30'],
   '40': ['forty', '40'],
   '50': ['fifty', '50'],
@@ -191,28 +200,52 @@ const NUMBER_WORDS: Record<string, string[]> = {
   '1000000': ['million', 'one million', 'a million', '1000000', '1,000,000'],
 };
 
+
 // ============================================================================
 // MEASUREMENT VARIATIONS
 // ============================================================================
 const MEASUREMENT_VARIATIONS: Record<string, string[]> = {
+  // Length
   km: ['km', 'kms', 'kilometre', 'kilometres', 'kilometer', 'kilometers'],
   m: ['m', 'metre', 'metres', 'meter', 'meters'],
   cm: ['cm', 'centimetre', 'centimetres', 'centimeter', 'centimeters'],
   mm: ['mm', 'millimetre', 'millimetres', 'millimeter', 'millimeters'],
-  kg: ['kg', 'kgs', 'kilogram', 'kilograms', 'kilo', 'kilos'],
-  g: ['g', 'gram', 'grams', 'gramme', 'grammes'],
-  mg: ['mg', 'milligram', 'milligrams'],
-  l: ['l', 'litre', 'litres', 'liter', 'liters'],
-  ml: ['ml', 'millilitre', 'millilitres', 'milliliter', 'milliliters'],
   ft: ['ft', 'foot', 'feet'],
   in: ['in', 'inch', 'inches'],
   mi: ['mi', 'mile', 'miles'],
+  
+  // Weight
+  kg: ['kg', 'kgs', 'kilogram', 'kilograms', 'kilo', 'kilos'],
+  g: ['g', 'gram', 'grams', 'gramme', 'grammes'],
+  mg: ['mg', 'milligram', 'milligrams'],
   lb: ['lb', 'lbs', 'pound', 'pounds'],
   oz: ['oz', 'ounce', 'ounces'],
+  
+  // Volume
+  l: ['l', 'litre', 'litres', 'liter', 'liters'],
+  ml: ['ml', 'millilitre', 'millilitres', 'milliliter', 'milliliters'],
+  
+  // Area
   sqm: ['sqm', 'sq m', 'square metre', 'square metres', 'square meter', 'square meters', 'm²', 'm2'],
   sqft: ['sqft', 'sq ft', 'square foot', 'square feet', 'ft²', 'ft2'],
   ha: ['ha', 'hectare', 'hectares'],
   acre: ['acre', 'acres'],
+  
+  // Temperature
+  celsius: ['c', '°c', 'celsius', 'degree celsius', 'degrees celsius', 'centigrade', 'degree centigrade', 'degrees centigrade'],
+  fahrenheit: ['f', '°f', 'fahrenheit', 'degree fahrenheit', 'degrees fahrenheit'],
+  
+  // Time durations
+  sec: ['sec', 'secs', 'second', 'seconds', 's'],
+  min: ['min', 'mins', 'minute', 'minutes'],
+  hr: ['hr', 'hrs', 'hour', 'hours', 'h'],
+  day: ['day', 'days', 'd'],
+  week: ['week', 'weeks', 'wk', 'wks'],
+  month: ['month', 'months', 'mo'],
+  year: ['year', 'years', 'yr', 'yrs'],
+  
+  // Percentage
+  percent: ['%', 'percent', 'percentage', 'per cent'],
 };
 
 // ============================================================================
@@ -473,6 +506,31 @@ function normalizeNumber(numStr: string): string {
 }
 
 /**
+ * Check if two strings represent the same number (digit vs word)
+ * E.g., "1" = "one", "21" = "twenty-one"
+ */
+function numbersAreEquivalent(str1: string, str2: string): boolean {
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+  
+  if (s1 === s2) return true;
+  
+  // Check in NUMBER_WORDS
+  for (const variations of Object.values(NUMBER_WORDS)) {
+    const matches1 = variations.some(w => w.toLowerCase() === s1);
+    const matches2 = variations.some(w => w.toLowerCase() === s2);
+    if (matches1 && matches2) return true;
+  }
+  
+  // Try to parse as numbers for direct comparison
+  const num1 = parseFloat(s1.replace(/[^\d.-]/g, ''));
+  const num2 = parseFloat(s2.replace(/[^\d.-]/g, ''));
+  if (!isNaN(num1) && !isNaN(num2) && num1 === num2) return true;
+  
+  return false;
+}
+
+/**
  * Check if two strings match as numbers
  * Handles: 30000, 30,000, thirty thousand
  */
@@ -502,29 +560,142 @@ function matchNumber(userAnswer: string, correctAnswer: string): boolean {
 }
 
 // ============================================================================
-// MEASUREMENT MATCHING
+// NUMBER + UNIT MATCHING (e.g., "1 degree" vs "one degree")
 // ============================================================================
 
 /**
- * Extract number and unit from measurement string
+ * Parse a string into number part and remaining text
+ * E.g., "1 degree Celsius" -> { number: "1", rest: "degree celsius" }
+ * E.g., "one degree Celsius" -> { number: "one", rest: "degree celsius" }
  */
-function parseMeasurement(str: string): { value: string; unit: string } | null {
+function parseNumberWithText(str: string): { numberPart: string; restPart: string } | null {
   const s = str.toLowerCase().trim();
   
-  // Pattern: number followed by unit (with or without space)
-  const pattern = /^([\d,.]+)\s*(.+)$/;
-  const match = s.match(pattern);
+  // Pattern 1: starts with digits (optionally with decimals)
+  const digitMatch = s.match(/^([\d,.]+)\s+(.+)$/);
+  if (digitMatch) {
+    return { numberPart: digitMatch[1], restPart: digitMatch[2].trim() };
+  }
   
-  if (match) {
-    return { value: match[1].replace(/,/g, ''), unit: match[2].trim() };
+  // Pattern 2: starts with a number word
+  const words = s.split(/\s+/);
+  if (words.length >= 2) {
+    // Check if first 1-3 words form a number
+    for (let len = 3; len >= 1; len--) {
+      if (words.length >= len) {
+        const potentialNumber = words.slice(0, len).join(' ');
+        const potentialNumberHyphen = words.slice(0, len).join('-');
+        
+        // Check if this is a recognized number word
+        for (const variations of Object.values(NUMBER_WORDS)) {
+          if (variations.some(v => 
+            v.toLowerCase() === potentialNumber || 
+            v.toLowerCase() === potentialNumberHyphen
+          )) {
+            return { 
+              numberPart: potentialNumber, 
+              restPart: words.slice(len).join(' ').trim() 
+            };
+          }
+        }
+      }
+    }
   }
   
   return null;
 }
 
 /**
+ * Match answers where number can be digit or word form
+ * E.g., "1 degree Celsius" = "one degree Celsius"
+ */
+function matchNumberWithText(userAnswer: string, correctAnswer: string): boolean {
+  const userParsed = parseNumberWithText(userAnswer);
+  const correctParsed = parseNumberWithText(correctAnswer);
+  
+  if (!userParsed || !correctParsed) return false;
+  
+  // Check if the rest parts match (with spelling variations)
+  const restMatch = userParsed.restPart === correctParsed.restPart ||
+    matchWithSpellingVariations(userParsed.restPart, correctParsed.restPart);
+  
+  if (!restMatch) return false;
+  
+  // Check if numbers are equivalent
+  return numbersAreEquivalent(userParsed.numberPart, correctParsed.numberPart);
+}
+
+// ============================================================================
+// MEASUREMENT MATCHING
+// ============================================================================
+
+/**
+ * Extract number and unit from measurement string
+ * Handles both digit form "10 kg" and word form "ten kilograms"
+ */
+function parseMeasurement(str: string): { value: string; unit: string } | null {
+  const s = str.toLowerCase().trim();
+  
+  // Pattern 1: digit followed by unit (with or without space)
+  const digitPattern = /^([\d,.]+)\s*(.+)$/;
+  const digitMatch = s.match(digitPattern);
+  
+  if (digitMatch) {
+    return { value: digitMatch[1].replace(/,/g, ''), unit: digitMatch[2].trim() };
+  }
+  
+  // Pattern 2: number word followed by unit
+  const words = s.split(/\s+/);
+  if (words.length >= 2) {
+    // Check if first 1-3 words form a number
+    for (let len = 3; len >= 1; len--) {
+      if (words.length >= len) {
+        const potentialNumber = words.slice(0, len).join(' ');
+        const potentialNumberHyphen = words.slice(0, len).join('-');
+        
+        // Check if this is a recognized number word
+        for (const [digit, variations] of Object.entries(NUMBER_WORDS)) {
+          if (variations.some(v => 
+            v.toLowerCase() === potentialNumber || 
+            v.toLowerCase() === potentialNumberHyphen
+          )) {
+            return { 
+              value: digit, // Convert to digit form for comparison
+              unit: words.slice(len).join(' ').trim() 
+            };
+          }
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Check if two units are equivalent (including multi-word units)
+ */
+function unitsAreEquivalent(unit1: string, unit2: string): boolean {
+  const u1 = unit1.toLowerCase().trim();
+  const u2 = unit2.toLowerCase().trim();
+  
+  if (u1 === u2) return true;
+  
+  // Check in MEASUREMENT_VARIATIONS
+  for (const variations of Object.values(MEASUREMENT_VARIATIONS)) {
+    if (variations.some(v => v === u1 || v.includes(u1)) && 
+        variations.some(v => v === u2 || v.includes(u2))) {
+      return true;
+    }
+  }
+  
+  // Also check for British/American spelling of units
+  return areSpellingEquivalent(u1, u2);
+}
+
+/**
  * Check if two measurement strings match
- * Accepts: 10kg, 10 kg, 10 kilograms, 10 kilos
+ * Accepts: 10kg, 10 kg, 10 kilograms, 10 kilos, ten kilograms, one degree celsius
  */
 function matchMeasurement(userAnswer: string, correctAnswer: string): boolean {
   const userMeasure = parseMeasurement(userAnswer);
@@ -532,19 +703,16 @@ function matchMeasurement(userAnswer: string, correctAnswer: string): boolean {
   
   if (!userMeasure || !correctMeasure) return false;
   
-  // Check if values match
-  if (userMeasure.value !== correctMeasure.value) return false;
-  
-  // Check if units are equivalent
-  for (const variations of Object.values(MEASUREMENT_VARIATIONS)) {
-    if (variations.includes(userMeasure.unit) && 
-        variations.includes(correctMeasure.unit)) {
-      return true;
+  // Check if values match (already normalized to digits by parseMeasurement)
+  if (userMeasure.value !== correctMeasure.value) {
+    // Try number equivalence as fallback
+    if (!numbersAreEquivalent(userMeasure.value, correctMeasure.value)) {
+      return false;
     }
   }
   
-  // Also check for British/American spelling of units
-  return areSpellingEquivalent(userMeasure.unit, correctMeasure.unit);
+  // Check if units are equivalent
+  return unitsAreEquivalent(userMeasure.unit, correctMeasure.unit);
 }
 
 // ============================================================================
@@ -729,6 +897,9 @@ export function checkIeltsAnswer(userAnswer: string, correctAnswers: string): bo
 
       // 6. NUMBER FORMAT VARIATIONS
       if (matchNumber(user, normalizedCorrect)) return true;
+
+      // 6b. NUMBER + TEXT VARIATIONS (e.g., "1 degree Celsius" = "one degree Celsius")
+      if (matchNumberWithText(user, normalizedCorrect)) return true;
 
       // 7. MEASUREMENT VARIATIONS
       if (matchMeasurement(user, normalizedCorrect)) return true;
