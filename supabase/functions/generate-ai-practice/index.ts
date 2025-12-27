@@ -149,7 +149,7 @@ function getLastGeminiError(): string {
   return lastGeminiError || 'Failed to generate content. Please try again.';
 }
 
-// Generate map image using Lovable AI Gateway
+// Generate map image using Gemini (via Lovable AI Gateway)
 async function generateMapImage(mapDescription: string, mapLabels: Array<{id: string; text: string}>): Promise<string | null> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   if (!LOVABLE_API_KEY) {
@@ -158,8 +158,8 @@ async function generateMapImage(mapDescription: string, mapLabels: Array<{id: st
   }
 
   try {
-    console.log('Generating map image with Lovable AI...');
-    
+    console.log('Generating map image with Gemini image model...');
+
     // Build a detailed prompt for map generation
     const labelsList = mapLabels.map(l => `${l.id}: ${l.text}`).join(', ');
     const imagePrompt = `Create a simple, clean map diagram for an IELTS listening test. 
@@ -205,7 +205,7 @@ Make it look like a professional test map with clear pathways and building outli
   }
 }
 
-// Generate flowchart image using Lovable AI Gateway
+// Generate flowchart image using Gemini (via Lovable AI Gateway)
 async function generateFlowchartImage(
   title: string, 
   steps: Array<{label?: string; text?: string; isBlank?: boolean; questionNumber?: number}>
@@ -217,7 +217,7 @@ async function generateFlowchartImage(
   }
 
   try {
-    console.log('Generating flowchart image with Lovable AI...');
+    console.log('Generating flowchart image with Gemini image model...');
     
     // Build step descriptions for the prompt
     const stepDescriptions = steps.map((step, idx) => {
@@ -506,15 +506,18 @@ Return ONLY valid JSON in this exact format:
 }`;
 
     case 'MULTIPLE_CHOICE_MULTIPLE':
-      // For MCQ Multiple, we create ONE question that requires selecting multiple answers
+      // For MCQ Multiple, we create ONE question "set" where test-takers must pick N answers.
+      // We represent it as a single question group spanning N question numbers (e.g., Questions 1-2) so UI counts correctly.
       // questionCount here represents the number of answers to select (e.g., 2 or 3)
       const numAnswersToSelect = Math.min(questionCount, 3); // Cap at 3 to keep it reasonable
       const answerWord = numAnswersToSelect === 2 ? 'TWO' : numAnswersToSelect === 3 ? 'THREE' : String(numAnswersToSelect);
-      
+
       return basePrompt + `2. Create ONE multiple choice question where test-takers must select ${answerWord} correct answers from the options.
 
 IMPORTANT:
-- Generate exactly ONE question with ${numAnswersToSelect} correct options
+- The question group spans ${numAnswersToSelect} question numbers: 1 to ${numAnswersToSelect}
+- Return ${numAnswersToSelect} question objects with question_number 1..${numAnswersToSelect}
+- ALL question objects must have the SAME question_text, SAME options, SAME correct_answer, SAME explanation
 - The correct_answer must be a comma-separated list of ${numAnswersToSelect} letters (e.g., "B,D" or "A,C,E")
 - DO NOT always use the same letters - randomize which options are correct
 - Provide 5-6 options total so there are distractors
@@ -525,10 +528,18 @@ Return ONLY valid JSON in this exact format:
     "title": "The title of the passage",
     "content": "The full passage text with paragraph labels like [A], [B], etc."
   },
-  "instruction": "Choose ${answerWord} letters, A-E.",
+  "instruction": "Questions 1-${numAnswersToSelect}. Choose ${answerWord} letters, A-E.",
   "questions": [
     {
       "question_number": 1,
+      "question_text": "Which ${answerWord} of the following statements are supported by information in the passage?",
+      "options": ["A First option", "B Second option", "C Third option", "D Fourth option", "E Fifth option"],
+      "correct_answer": "B,D",
+      "explanation": "B is correct because... D is correct because...",
+      "max_answers": ${numAnswersToSelect}
+    },
+    {
+      "question_number": ${numAnswersToSelect},
       "question_text": "Which ${answerWord} of the following statements are supported by information in the passage?",
       "options": ["A First option", "B Second option", "C Third option", "D Fourth option", "E Fifth option"],
       "correct_answer": "B,D",
@@ -1304,7 +1315,17 @@ serve(async (req) => {
           imageUrl: mapImageUrl,
         };
       } else if (questionType.includes('MULTIPLE_CHOICE') && parsed.questions?.[0]?.options) {
-        groupOptions = { options: parsed.questions[0].options };
+        // For MCQ Multiple, store max_answers + option_format at GROUP level so UI + navigation can read it.
+        if (questionType === 'MULTIPLE_CHOICE_MULTIPLE') {
+          const maxAnswers = parsed.questions?.[0]?.max_answers || Math.min(questionCount, 3);
+          groupOptions = {
+            options: parsed.questions[0].options,
+            max_answers: maxAnswers,
+            option_format: parsed.questions?.[0]?.option_format || 'A',
+          };
+        } else {
+          groupOptions = { options: parsed.questions[0].options };
+        }
       } else if ((questionType === 'FILL_IN_BLANK' || questionType === 'SHORT_ANSWER') && parsed.display_options) {
         // Handle fill-in-blank display variations
         groupOptions = {
@@ -1313,18 +1334,42 @@ serve(async (req) => {
         };
       }
 
-      const questions = (parsed.questions || []).map((q: any, i: number) => ({
-        id: crypto.randomUUID(),
-        question_number: q.question_number || i + 1,
-        question_text: q.question_text,
-        question_type: questionType,
-        correct_answer: q.correct_answer,
-        explanation: q.explanation,
-        options: q.options || null,
-        heading: q.heading || null,
-        table_data: parsed.table_data || null,
-        max_answers: q.max_answers || undefined,
-      }));
+      const questions = (() => {
+        // Normalize MCQ Multiple as a single group spanning N question numbers.
+        if (questionType === 'MULTIPLE_CHOICE_MULTIPLE') {
+          const maxAnswers = (groupOptions as any)?.max_answers || Math.min(questionCount, 3);
+          const first = parsed.questions?.[0] || {};
+          const base = {
+            question_text: first.question_text,
+            correct_answer: first.correct_answer,
+            explanation: first.explanation,
+            options: first.options || null,
+            heading: first.heading || null,
+            table_data: parsed.table_data || null,
+            max_answers: first.max_answers || maxAnswers,
+          };
+
+          return Array.from({ length: maxAnswers }, (_, i) => ({
+            id: crypto.randomUUID(),
+            question_number: i + 1,
+            question_type: questionType,
+            ...base,
+          }));
+        }
+
+        return (parsed.questions || []).map((q: any, i: number) => ({
+          id: crypto.randomUUID(),
+          question_number: q.question_number || i + 1,
+          question_text: q.question_text,
+          question_type: questionType,
+          correct_answer: q.correct_answer,
+          explanation: q.explanation,
+          options: q.options || null,
+          heading: q.heading || null,
+          table_data: parsed.table_data || null,
+          max_answers: q.max_answers || undefined,
+        }));
+      })();
 
       return new Response(JSON.stringify({
         testId,
@@ -1335,15 +1380,17 @@ serve(async (req) => {
           content: parsed.passage.content,
           passage_number: 1,
         },
-        questionGroups: [{
-          id: groupId,
-          instruction: parsed.instruction || `Questions 1-${questionCount}`,
-          question_type: questionType,
-          start_question: 1,
-          end_question: questions.length,
-          options: groupOptions,
-          questions: questions,
-        }],
+          questionGroups: [{
+            id: groupId,
+            instruction: parsed.instruction || `Questions 1-${questionCount}`,
+            question_type: questionType,
+            start_question: 1,
+            end_question: questionType === 'MULTIPLE_CHOICE_MULTIPLE'
+              ? ((groupOptions as any)?.max_answers || questions.length)
+              : questions.length,
+            options: groupOptions,
+            questions: questions,
+          }],
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
