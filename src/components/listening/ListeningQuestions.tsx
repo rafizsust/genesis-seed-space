@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { FillInBlank, ListeningTableCompletion, MatchingCorrectLetter, Maps, MapLabeling, MultipleChoiceSingle, MultipleChoiceMultiple, DragAndDropOptions, FlowchartCompletion, NoteStyleFillInBlank } from './questions';
+import { FillInBlank, ListeningTableCompletion, MatchingCorrectLetter, Maps, MapLabeling, MapLabelingTable, MultipleChoiceSingle, MultipleChoiceMultiple, DragAndDropOptions, FlowchartCompletion, NoteStyleFillInBlank } from './questions';
 import { QuestionTextWithTools } from '@/components/common/QuestionTextWithTools';
 import { TableData, TableEditorData } from '@/components/admin/ListeningQuestionGroupEditor'; // Import types from admin editor
 
@@ -269,22 +269,23 @@ export function ListeningQuestions({
               </div>
             )}
 
-            {/* Map Labeling - Fallback text-based for AI practice (no image) */}
+            {/* Map Labeling - Table-based UI for AI practice (official IELTS format) */}
             {group.question_type === 'MAP_LABELING' && !group.options?.imageUrl && group.options?.map_labels && (
-              <div className="mb-6 p-4 bg-muted/50 rounded-lg">
-                <h4 className="text-sm font-semibold mb-3 text-foreground">Map Description:</h4>
-                {group.options.map_description && (
-                  <p className="text-sm text-muted-foreground mb-4">{group.options.map_description}</p>
-                )}
-                <h4 className="text-sm font-semibold mb-2 text-foreground">Locations:</h4>
-                <div className="grid gap-2">
-                  {group.options.map_labels.map((label: { id: string; text: string }) => (
-                    <div key={label.id} className="flex items-center gap-2 text-sm">
-                      <span className="font-medium text-primary">{label.id}:</span>
-                      <span className="text-foreground">{label.text}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="mb-6">
+                <MapLabelingTable
+                  mapDescription={group.options.map_description}
+                  mapLabels={group.options.map_labels}
+                  questions={groupQuestions.map(q => ({
+                    question_number: q.question_number,
+                    question_text: q.question_text,
+                    correct_answer: q.correct_answer,
+                  }))}
+                  answers={answers}
+                  onAnswerChange={onAnswerChange}
+                  onQuestionFocus={setCurrentQuestion}
+                  fontSize={fontSize}
+                  imageUrl={group.options.imageUrl}
+                />
               </div>
             )}
 

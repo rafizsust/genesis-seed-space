@@ -1881,7 +1881,9 @@ serve(async (req) => {
         };
       } else if (questionType === 'DRAG_AND_DROP_OPTIONS') {
         // UI expects group.options.options (array of strings) + option_format
-        groupOptions = { options: parsed.drag_options || [], option_format: 'A' };
+        // CRITICAL: Shuffle the options so they're not in order matching questions
+        const shuffledDragOptions = [...(parsed.drag_options || [])].sort(() => Math.random() - 0.5);
+        groupOptions = { options: shuffledDragOptions, option_format: 'A' };
       } else if (questionType === 'MAP_LABELING') {
         // Generate map image using Lovable AI
         let mapImageUrl: string | undefined;
