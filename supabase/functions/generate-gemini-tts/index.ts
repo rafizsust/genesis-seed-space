@@ -33,69 +33,72 @@ async function decryptApiKey(encryptedValue: string, encryptionKey: string): Pro
   return decoder.decode(decryptedData);
 }
 
-// Helper to sleep for specified ms
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function generateTtsPcmBase64({
   apiKey,
   text,
   voiceName,
-  maxRetries = 3,
 }: {
   apiKey: string;
   text: string;
   voiceName: string;
-  maxRetries?: number;
 }): Promise<string> {
   const prompt = `You are an IELTS Speaking examiner with a neutral British accent.\n\nRead aloud EXACTLY the following text. Do not add, remove, or paraphrase anything. Use natural pacing and clear pronunciation.\n\n"""\n${text}\n"""`;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName },
-              },
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName },
             },
           },
-        }),
-      }
-    );
-
-    if (resp.ok) {
-      const data = await resp.json();
-      const audioData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data as string | undefined;
-      if (!audioData) throw new Error("No audio returned from Gemini TTS");
-      return audioData;
+        },
+      }),
     }
+  );
 
-    // Handle rate limiting (429)
-    if (resp.status === 429) {
-      const retryAfter = parseInt(resp.headers.get("Retry-After") || "0", 10);
-      const waitTime = retryAfter > 0 ? retryAfter * 1000 : Math.min(20000 * Math.pow(2, attempt), 60000);
-      console.log(`Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), waiting ${waitTime}ms...`);
-      
-      if (attempt < maxRetries) {
-        await sleep(waitTime);
-        continue;
-      }
-    }
-
-    const t = await resp.text();
-    console.error("Gemini TTS error:", resp.status, t);
-    throw new Error(`Gemini TTS failed (${resp.status})`);
+  if (resp.ok) {
+    const data = await resp.json();
+    const audioData = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data as string | undefined;
+    if (!audioData) throw new Error("No audio returned from Gemini TTS");
+    return audioData;
   }
 
-  throw new Error("Gemini TTS failed after max retries");
+  // Handle quota / rate limit quickly (no long retries in edge functions)
+  if (resp.status === 429) {
+    let retryAfterSeconds: number | undefined;
+
+    try {
+      const data = await resp.json();
+      const retryInfo = (data?.error?.details || []).find((d: any) => d?.["@type"]?.includes("RetryInfo"));
+      const retryDelay = retryInfo?.retryDelay as string | undefined; // e.g. "36s"
+      const m = retryDelay?.match(/(\d+)/);
+      if (m) retryAfterSeconds = parseInt(m[1], 10);
+
+      console.error("Gemini TTS error:", 429, JSON.stringify(data, null, 2));
+
+      const e = new Error(
+        `Gemini TTS quota/rate limit reached. Try again in ${retryAfterSeconds ?? 30}s, or enable billing/increase quota for your Gemini API key.`
+      );
+      (e as any).status = 429;
+      (e as any).retryAfterSeconds = retryAfterSeconds;
+      throw e;
+    } catch (parseErr) {
+      const e = new Error("Gemini TTS quota/rate limit reached (429). Please try again later or enable billing.");
+      (e as any).status = 429;
+      throw e;
+    }
+  }
+
+  const t = await resp.text();
+  console.error("Gemini TTS error:", resp.status, t);
+  throw new Error(`Gemini TTS failed (${resp.status})`);
 }
 
 serve(async (req) => {
@@ -181,7 +184,17 @@ serve(async (req) => {
     );
   } catch (error: unknown) {
     console.error("generate-gemini-tts error:", error);
+
+    const status = (error as any)?.status;
+    const retryAfterSeconds = (error as any)?.retryAfterSeconds;
     const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (status === 429) {
+      return new Response(JSON.stringify({ error: message, retryAfterSeconds }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
