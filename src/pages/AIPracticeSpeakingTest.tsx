@@ -117,6 +117,7 @@ export default function AIPracticeSpeakingTest() {
 
   const activeAudioKeyRef = useRef<string | null>(null);
   const activeAudioStartRef = useRef<number>(0);
+  const pendingStopMetaRef = useRef<{ key: string; meta: Omit<AudioSegmentMeta, 'chunks' | 'duration'>; startMs: number } | null>(null);
 
   const recordingsRef = useRef(recordings);
   useEffect(() => {
@@ -239,27 +240,48 @@ export default function AIPracticeSpeakingTest() {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-    }
-    setIsRecording(false);
+    const recorder = mediaRecorderRef.current;
 
     const meta = getActiveSegmentMeta();
     const key = activeAudioKeyRef.current ?? meta?.key;
-    if (!key || !meta) return;
+    if (!recorder || !key || !meta) {
+      setIsRecording(false);
+      return;
+    }
 
-    const duration = Math.max(0, (Date.now() - activeAudioStartRef.current) / 1000);
+    // Save after MediaRecorder flushes the final dataavailable event.
+    pendingStopMetaRef.current = {
+      key,
+      meta,
+      startMs: activeAudioStartRef.current,
+    };
 
-    // Save per-question chunks
-    setAudioSegments((prev) => ({
-      ...prev,
-      [key]: {
-        ...meta,
-        chunks: [...audioChunksRef.current],
-        duration,
-      },
-    }));
+    recorder.onstop = () => {
+      try {
+        const pending = pendingStopMetaRef.current;
+        if (!pending) return;
+
+        const duration = Math.max(0, (Date.now() - pending.startMs) / 1000);
+
+        setAudioSegments((prev) => ({
+          ...prev,
+          [pending.key]: {
+            ...pending.meta,
+            chunks: [...audioChunksRef.current],
+            duration,
+          },
+        }));
+      } finally {
+        pendingStopMetaRef.current = null;
+      }
+    };
+
+    if (recorder.state === 'recording') {
+      recorder.stop();
+      recorder.stream.getTracks().forEach((t) => t.stop());
+    }
+
+    setIsRecording(false);
   };
 
   const speakText = (text: string) => {
@@ -274,6 +296,12 @@ export default function AIPracticeSpeakingTest() {
       setCurrentSpeakingText(text);
       tts.speak(text);
     }
+  };
+
+  const endTest = () => {
+    setTimeLeft(0);
+    setPhase('ending');
+    speakText('Thank you. That is the end of the speaking test.');
   };
 
   const submitTest = async () => {
