@@ -306,20 +306,71 @@ export default function AIPracticeSpeakingTest() {
   };
 
   const startPart2Speaking = () => {
-    // User clicked to start speaking early - clear timer
+    // User clicked to start speaking early - clear prep timer and start recording immediately
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    // Directly start Part 2 recording
+    setPhase('part2_recording');
+    setTimeLeft(TIMING.PART2_SPEAK);
+    part2SpeakStartRef.current = Date.now();
+    startRecording();
+    speakText("Please start speaking now. You have two minutes.");
+  };
+
+  // Handle stopping recording early and moving to next question/part
+  const handleStopAndNext = () => {
+    const currentPhase = phaseRef.current;
+    const parts = speakingPartsRef.current;
+    const qIdx = questionIndexRef.current;
+
+    // Clear any running timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     setTimeLeft(0);
-    speakText("Can you start speaking now, please?");
+
+    if (currentPhase === 'part1_recording') {
+      stopRecording();
+      const part1 = parts.part1;
+      const nextIdx = qIdx + 1;
+      
+      if (part1?.questions && nextIdx < part1.questions.length) {
+        setQuestionIndex(nextIdx);
+        setPhase('part1_question');
+        speakText(part1.questions[nextIdx].question_text);
+      } else {
+        transitionToPart2();
+      }
+    } else if (currentPhase === 'part2_recording') {
+      stopRecording();
+      const duration = (Date.now() - part2SpeakStartRef.current) / 1000;
+      setRecordings((prev) => ({
+        ...prev,
+        2: { ...prev[2], duration },
+      }));
+      transitionToPart3();
+    } else if (currentPhase === 'part3_recording') {
+      stopRecording();
+      const part3 = parts.part3;
+      const nextIdx = qIdx + 1;
+      
+      if (part3?.questions && nextIdx < part3.questions.length) {
+        setQuestionIndex(nextIdx);
+        setPhase('part3_question');
+        speakText(part3.questions[nextIdx].question_text);
+      } else {
+        endTest();
+      }
+    }
   };
 
   // Handle TTS completion - update ref with latest function
   handleTTSCompleteRef.current = () => {
     const currentPhase = phaseRef.current;
     const parts = speakingPartsRef.current;
-    const speakingTextNow = currentSpeakingTextRef.current;
 
     if (currentPhase === 'part1_intro') {
       // Start first Part 1 question
@@ -340,11 +391,12 @@ export default function AIPracticeSpeakingTest() {
       // Show cue card and start prep timer
       setPhase('part2_prep');
       setTimeLeft(TIMING.PART2_PREP);
-    } else if (currentPhase === 'part2_prep' && speakingTextNow.includes('preparation time is over')) {
-      // Start Part 2 recording after prep-over announcement
+    } else if (currentPhase === 'part2_prep') {
+      // Start Part 2 recording after TTS completes (either prep-over or early start message)
       setPhase('part2_recording');
       setTimeLeft(TIMING.PART2_SPEAK);
       part2SpeakStartRef.current = Date.now();
+      startRecording();
       startRecording();
     } else if (currentPhase === 'part2_transition') {
       // Start Part 3
@@ -590,7 +642,7 @@ export default function AIPracticeSpeakingTest() {
           </Card>
         )}
 
-        {/* Recording indicator */}
+        {/* Recording indicator with Stop & Next button */}
         {isRecording && (
           <div className="flex flex-col items-center gap-4 py-8">
             <div className="relative">
@@ -601,6 +653,16 @@ export default function AIPracticeSpeakingTest() {
             </div>
             <p className="text-muted-foreground">Recording your response...</p>
             <p className="text-sm text-muted-foreground">Time remaining: {formatTime(timeLeft)}</p>
+            
+            {/* Stop & Next button */}
+            <Button 
+              onClick={handleStopAndNext} 
+              variant="outline" 
+              size="lg"
+              className="mt-4"
+            >
+              Stop & Move to Next
+            </Button>
           </div>
         )}
 
