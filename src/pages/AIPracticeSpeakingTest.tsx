@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -70,7 +70,6 @@ export default function AIPracticeSpeakingTest() {
   const [currentPart, setCurrentPart] = useState<1 | 2 | 3>(1);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
-  const [totalTestTime, setTotalTestTime] = useState(0);
 
   // TTS state
   const [isMuted, setIsMuted] = useState(false);
@@ -84,20 +83,27 @@ export default function AIPracticeSpeakingTest() {
     3: { chunks: [], transcript: '', startTime: 0 },
   });
 
-  // Refs
+  // Refs for state access in callbacks (avoid stale closures)
+  const phaseRef = useRef<TestPhase>(phase);
+  const questionIndexRef = useRef(questionIndex);
+  const currentPartRef = useRef(currentPart);
+  const isMutedRef = useRef(isMuted);
+  const currentSpeakingTextRef = useRef(currentSpeakingText);
+  
+  // Update refs when state changes
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { questionIndexRef.current = questionIndex; }, [questionIndex]);
+  useEffect(() => { currentPartRef.current = currentPart; }, [currentPart]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { currentSpeakingTextRef.current = currentSpeakingText; }, [currentSpeakingText]);
+
+  // Other refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const part2SpeakStartRef = useRef<number>(0);
-
-  // Browser TTS
-  const tts = useSpeechSynthesis({
-    voiceName: sessionStorage.getItem('speaking_voice_preference') || undefined,
-    onEnd: () => {
-      setCurrentSpeakingText('');
-      handleTTSComplete();
-    },
-  });
+  const recordingsRef = useRef(recordings);
+  useEffect(() => { recordingsRef.current = recordings; }, [recordings]);
 
   // Get current part data
   const speakingParts = useMemo(() => {
@@ -108,6 +114,302 @@ export default function AIPracticeSpeakingTest() {
       part3: parts.find((p) => p.part_number === 3) || null,
     };
   }, [test]);
+
+  // Keep a ref to speakingParts for callbacks
+  const speakingPartsRef = useRef(speakingParts);
+  useEffect(() => { speakingPartsRef.current = speakingParts; }, [speakingParts]);
+
+  // Browser TTS - create handler ref first
+  const handleTTSCompleteRef = useRef<() => void>(() => {});
+  
+  const tts = useSpeechSynthesis({
+    voiceName: sessionStorage.getItem('speaking_voice_preference') || undefined,
+    onEnd: () => {
+      setCurrentSpeakingText('');
+      handleTTSCompleteRef.current();
+    },
+  });
+
+  // Forward declarations for functions (to handle circular dependencies)
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+
+      // Update recording start time
+      const part = currentPartRef.current;
+      setRecordings((prev) => ({
+        ...prev,
+        [part]: {
+          ...prev[part],
+          startTime: Date.now(),
+        },
+      }));
+    } catch (err) {
+      console.error('Recording error:', err);
+      toast({
+        title: 'Microphone Error',
+        description: 'Could not access microphone',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+    }
+    setIsRecording(false);
+
+    // Save chunks to recording
+    const part = currentPartRef.current;
+    setRecordings((prev) => ({
+      ...prev,
+      [part]: {
+        ...prev[part],
+        chunks: [...prev[part].chunks, ...audioChunksRef.current],
+      },
+    }));
+  };
+
+  const speakText = (text: string) => {
+    if (isMutedRef.current) {
+      setCurrentSpeakingText(text);
+      // Simulate TTS duration based on text length
+      setTimeout(() => {
+        setCurrentSpeakingText('');
+        handleTTSCompleteRef.current();
+      }, Math.max(2000, text.length * 50));
+    } else {
+      setCurrentSpeakingText(text);
+      tts.speak(text);
+    }
+  };
+
+  const endTest = () => {
+    setPhase('ending');
+    speakText("Thank you. That is the end of the speaking test.");
+  };
+
+  const submitTest = async () => {
+    setPhase('submitting');
+
+    try {
+      // Prepare audio data
+      const partAudios = [];
+      const recs = recordingsRef.current;
+      
+      for (const part of [1, 2, 3] as const) {
+        const rec = recs[part];
+        if (rec.chunks.length > 0) {
+          const blob = new Blob(rec.chunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          const base64 = await new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+            reader.readAsDataURL(blob);
+          });
+
+          partAudios.push({
+            partNumber: part,
+            audioBase64: base64,
+            duration: rec.duration || Math.floor((Date.now() - rec.startTime) / 1000),
+          });
+        }
+      }
+
+      // Calculate Part 2 speaking duration for fluency flag
+      const part2Duration = recs[2].duration || 0;
+      const fluencyFlag = part2Duration > 0 && part2Duration < PART2_MIN_SPEAKING;
+
+      // Submit for evaluation
+      const { error } = await supabase.functions.invoke('evaluate-ai-speaking', {
+        body: {
+          testId,
+          partAudios,
+          transcripts: {
+            1: recs[1].transcript,
+            2: recs[2].transcript,
+            3: recs[3].transcript,
+          },
+          topic: test?.topic,
+          difficulty: test?.difficulty,
+          part2SpeakingDuration: part2Duration,
+          fluencyFlag,
+        },
+      });
+
+      if (error) throw error;
+
+      setPhase('done');
+      
+      // Navigate to results
+      navigate(`/ai-practice/results/${testId}?module=speaking`);
+    } catch (err) {
+      console.error('Submission error:', err);
+      toast({
+        title: 'Submission Failed',
+        description: 'Could not submit test for evaluation. Please try again.',
+        variant: 'destructive',
+      });
+      setPhase('done');
+    }
+  };
+
+  const startPart3 = () => {
+    setCurrentPart(3);
+    setQuestionIndex(0);
+    const part3 = speakingPartsRef.current.part3;
+    
+    if (part3) {
+      setPhase('part3_intro');
+      speakText(part3.instruction);
+    } else {
+      endTest();
+    }
+  };
+
+  const transitionToPart3 = () => {
+    setPhase('part2_transition');
+    speakText("Thank you. That is the end of Part 2. Now we will move on to Part 3.");
+  };
+
+  const startPart2 = () => {
+    setCurrentPart(2);
+    setQuestionIndex(0);
+    const part2 = speakingPartsRef.current.part2;
+    
+    if (part2) {
+      setPhase('part2_intro');
+      speakText(part2.instruction);
+    } else if (speakingPartsRef.current.part3) {
+      startPart3();
+    } else {
+      endTest();
+    }
+  };
+
+  const transitionToPart2 = () => {
+    setPhase('part1_transition');
+    speakText("Thank you. That is the end of Part 1. Now we will move on to Part 2.");
+  };
+
+  const startPart2Speaking = () => {
+    // User clicked to start speaking early - clear timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setTimeLeft(0);
+    speakText("Can you start speaking now, please?");
+  };
+
+  // Handle TTS completion - update ref with latest function
+  handleTTSCompleteRef.current = () => {
+    const currentPhase = phaseRef.current;
+    const parts = speakingPartsRef.current;
+    const speakingTextNow = currentSpeakingTextRef.current;
+
+    if (currentPhase === 'part1_intro') {
+      // Start first Part 1 question
+      const part1 = parts.part1;
+      if (part1?.questions?.[0]) {
+        setPhase('part1_question');
+        speakText(part1.questions[0].question_text);
+      }
+    } else if (currentPhase === 'part1_question') {
+      // Start recording for Part 1
+      setPhase('part1_recording');
+      setTimeLeft(TIMING.PART1_QUESTION);
+      startRecording();
+    } else if (currentPhase === 'part1_transition') {
+      // Start Part 2
+      startPart2();
+    } else if (currentPhase === 'part2_intro') {
+      // Show cue card and start prep timer
+      setPhase('part2_prep');
+      setTimeLeft(TIMING.PART2_PREP);
+    } else if (currentPhase === 'part2_prep' && speakingTextNow.includes('preparation time is over')) {
+      // Start Part 2 recording after prep-over announcement
+      setPhase('part2_recording');
+      setTimeLeft(TIMING.PART2_SPEAK);
+      part2SpeakStartRef.current = Date.now();
+      startRecording();
+    } else if (currentPhase === 'part2_transition') {
+      // Start Part 3
+      startPart3();
+    } else if (currentPhase === 'part3_intro') {
+      // Start first Part 3 question
+      const part3 = parts.part3;
+      if (part3?.questions?.[0]) {
+        setPhase('part3_question');
+        speakText(part3.questions[0].question_text);
+      }
+    } else if (currentPhase === 'part3_question') {
+      // Start recording for Part 3
+      setPhase('part3_recording');
+      setTimeLeft(TIMING.PART3_QUESTION);
+      startRecording();
+    } else if (currentPhase === 'ending') {
+      submitTest();
+    }
+  };
+
+  // Handle timer completion
+  const handleTimerComplete = () => {
+    const currentPhase = phaseRef.current;
+    const parts = speakingPartsRef.current;
+    const qIdx = questionIndexRef.current;
+
+    if (currentPhase === 'part1_recording') {
+      stopRecording();
+      const part1 = parts.part1;
+      const nextIdx = qIdx + 1;
+      
+      if (part1?.questions && nextIdx < part1.questions.length) {
+        setQuestionIndex(nextIdx);
+        setPhase('part1_question');
+        speakText(part1.questions[nextIdx].question_text);
+      } else {
+        // Transition to Part 2
+        transitionToPart2();
+      }
+    } else if (currentPhase === 'part2_prep') {
+      // Start Part 2 recording
+      speakText("Your one minute preparation time is over. Please start speaking now. You have two minutes.");
+    } else if (currentPhase === 'part2_recording') {
+      stopRecording();
+      const duration = (Date.now() - part2SpeakStartRef.current) / 1000;
+      setRecordings((prev) => ({
+        ...prev,
+        2: { ...prev[2], duration },
+      }));
+      transitionToPart3();
+    } else if (currentPhase === 'part3_recording') {
+      stopRecording();
+      const part3 = parts.part3;
+      const nextIdx = qIdx + 1;
+      
+      if (part3?.questions && nextIdx < part3.questions.length) {
+        setQuestionIndex(nextIdx);
+        setPhase('part3_question');
+        speakText(part3.questions[nextIdx].question_text);
+      } else {
+        endTest();
+      }
+    }
+  };
 
   // Load test data
   useEffect(() => {
@@ -139,176 +441,21 @@ export default function AIPracticeSpeakingTest() {
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          handleTimerComplete();
+          // Use setTimeout to call handleTimerComplete outside the setState
+          setTimeout(() => handleTimerComplete(), 0);
           return 0;
         }
         return prev - 1;
       });
-      setTotalTestTime((prev) => prev + 1);
     }, 1000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [timeLeft]);
+  }, [timeLeft > 0]); // Only restart when going from 0 to non-zero
 
-  // Handle timer completion
-  const handleTimerComplete = useCallback(() => {
-    if (phase === 'part1_recording') {
-      stopRecording();
-      const part1 = speakingParts.part1;
-      const nextIdx = questionIndex + 1;
-      
-      if (part1?.questions && nextIdx < part1.questions.length) {
-        setQuestionIndex(nextIdx);
-        setPhase('part1_question');
-        speakText(part1.questions[nextIdx].question_text);
-      } else {
-        // Transition to Part 2
-        transitionToPart2();
-      }
-    } else if (phase === 'part2_prep') {
-      // Start Part 2 recording
-      speakText("Your one minute preparation time is over. Please start speaking now. You have two minutes.");
-    } else if (phase === 'part2_recording') {
-      stopRecording();
-      const duration = (Date.now() - part2SpeakStartRef.current) / 1000;
-      setRecordings((prev) => ({
-        ...prev,
-        2: { ...prev[2], duration },
-      }));
-      transitionToPart3();
-    } else if (phase === 'part3_recording') {
-      stopRecording();
-      const part3 = speakingParts.part3;
-      const nextIdx = questionIndex + 1;
-      
-      if (part3?.questions && nextIdx < part3.questions.length) {
-        setQuestionIndex(nextIdx);
-        setPhase('part3_question');
-        speakText(part3.questions[nextIdx].question_text);
-      } else {
-        endTest();
-      }
-    }
-  }, [phase, questionIndex, speakingParts]);
-
-  // Speak text with TTS
-  const speakText = useCallback((text: string) => {
-    if (isMuted) {
-      setCurrentSpeakingText(text);
-      // Simulate TTS duration based on text length
-      setTimeout(() => {
-        setCurrentSpeakingText('');
-        handleTTSComplete();
-      }, Math.max(2000, text.length * 50));
-    } else {
-      setCurrentSpeakingText(text);
-      tts.speak(text);
-    }
-  }, [isMuted, tts]);
-
-  // Handle TTS completion
-  const handleTTSComplete = useCallback(() => {
-    if (phase === 'part1_intro') {
-      // Start first Part 1 question
-      const part1 = speakingParts.part1;
-      if (part1?.questions?.[0]) {
-        setPhase('part1_question');
-        speakText(part1.questions[0].question_text);
-      }
-    } else if (phase === 'part1_question') {
-      // Start recording for Part 1
-      setPhase('part1_recording');
-      setTimeLeft(TIMING.PART1_QUESTION);
-      startRecording();
-    } else if (phase === 'part1_transition') {
-      // Start Part 2
-      startPart2();
-    } else if (phase === 'part2_intro') {
-      // Show cue card and start prep timer
-      setPhase('part2_prep');
-      setTimeLeft(TIMING.PART2_PREP);
-    } else if (phase === 'part2_prep' && currentSpeakingText.includes('preparation time is over')) {
-      // Start Part 2 recording after prep-over announcement
-      setPhase('part2_recording');
-      setTimeLeft(TIMING.PART2_SPEAK);
-      part2SpeakStartRef.current = Date.now();
-      startRecording();
-    } else if (phase === 'part2_transition') {
-      // Start Part 3
-      startPart3();
-    } else if (phase === 'part3_intro') {
-      // Start first Part 3 question
-      const part3 = speakingParts.part3;
-      if (part3?.questions?.[0]) {
-        setPhase('part3_question');
-        speakText(part3.questions[0].question_text);
-      }
-    } else if (phase === 'part3_question') {
-      // Start recording for Part 3
-      setPhase('part3_recording');
-      setTimeLeft(TIMING.PART3_QUESTION);
-      startRecording();
-    } else if (phase === 'ending') {
-      submitTest();
-    }
-  }, [phase, speakingParts, currentSpeakingText]);
-
-  // Recording functions
-  const startRecording = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.start(1000);
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-
-      // Update recording start time
-      setRecordings((prev) => ({
-        ...prev,
-        [currentPart]: {
-          ...prev[currentPart],
-          startTime: Date.now(),
-        },
-      }));
-    } catch (err) {
-      console.error('Recording error:', err);
-      toast({
-        title: 'Microphone Error',
-        description: 'Could not access microphone',
-        variant: 'destructive',
-      });
-    }
-  }, [currentPart, toast]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
-    }
-    setIsRecording(false);
-
-    // Save chunks to recording
-    setRecordings((prev) => ({
-      ...prev,
-      [currentPart]: {
-        ...prev[currentPart],
-        chunks: [...prev[currentPart].chunks, ...audioChunksRef.current],
-      },
-    }));
-  }, [currentPart]);
-
-  // Test flow functions
-  const startTest = useCallback(() => {
+  // Start test function
+  const startTest = () => {
     setShowStartOverlay(false);
     
     // Determine which part to start with
@@ -321,118 +468,7 @@ export default function AIPracticeSpeakingTest() {
     } else if (speakingParts.part3) {
       startPart3();
     }
-  }, [speakingParts]);
-
-  const transitionToPart2 = useCallback(() => {
-    setPhase('part1_transition');
-    speakText("Thank you. That is the end of Part 1. Now we will move on to Part 2.");
-  }, []);
-
-  const startPart2 = useCallback(() => {
-    setCurrentPart(2);
-    setQuestionIndex(0);
-    const part2 = speakingParts.part2;
-    
-    if (part2) {
-      setPhase('part2_intro');
-      speakText(part2.instruction);
-    } else if (speakingParts.part3) {
-      startPart3();
-    } else {
-      endTest();
-    }
-  }, [speakingParts]);
-
-  const startPart2Speaking = useCallback(() => {
-    // User clicked to start speaking early
-    setTimeLeft(0); // Cancel prep timer
-    speakText("Can you start speaking now, please?");
-  }, []);
-
-  const transitionToPart3 = useCallback(() => {
-    setPhase('part2_transition');
-    speakText("Thank you. That is the end of Part 2. Now we will move on to Part 3.");
-  }, []);
-
-  const startPart3 = useCallback(() => {
-    setCurrentPart(3);
-    setQuestionIndex(0);
-    const part3 = speakingParts.part3;
-    
-    if (part3) {
-      setPhase('part3_intro');
-      speakText(part3.instruction);
-    } else {
-      endTest();
-    }
-  }, [speakingParts]);
-
-  const endTest = useCallback(() => {
-    setPhase('ending');
-    speakText("Thank you. That is the end of the speaking test.");
-  }, []);
-
-  const submitTest = useCallback(async () => {
-    setPhase('submitting');
-
-    try {
-      // Prepare audio data
-      const partAudios = [];
-      for (const part of [1, 2, 3] as const) {
-        const rec = recordings[part];
-        if (rec.chunks.length > 0) {
-          const blob = new Blob(rec.chunks, { type: 'audio/webm' });
-          const reader = new FileReader();
-          const base64 = await new Promise<string>((resolve) => {
-            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-            reader.readAsDataURL(blob);
-          });
-
-          partAudios.push({
-            partNumber: part,
-            audioBase64: base64,
-            duration: rec.duration || Math.floor((Date.now() - rec.startTime) / 1000),
-          });
-        }
-      }
-
-      // Calculate Part 2 speaking duration for fluency flag
-      const part2Duration = recordings[2].duration || 0;
-      const fluencyFlag = part2Duration > 0 && part2Duration < PART2_MIN_SPEAKING;
-
-      // Submit for evaluation
-      const { data, error } = await supabase.functions.invoke('evaluate-ai-speaking', {
-        body: {
-          testId,
-          partAudios,
-          transcripts: {
-            1: recordings[1].transcript,
-            2: recordings[2].transcript,
-            3: recordings[3].transcript,
-          },
-          topic: test?.topic,
-          difficulty: test?.difficulty,
-          part2SpeakingDuration: part2Duration,
-          fluencyFlag,
-        },
-      });
-
-      if (error) throw error;
-
-      setPhase('done');
-      
-      // Navigate to results
-      navigate(`/ai-practice/results/${testId}?module=speaking`);
-    } catch (err) {
-      console.error('Submission error:', err);
-      toast({
-        title: 'Submission Failed',
-        description: 'Could not submit test for evaluation. Please try again.',
-        variant: 'destructive',
-      });
-      setPhase('done');
-    }
-  }, [recordings, testId, test, navigate, toast]);
+  };
 
   // Format time display
   const formatTime = (seconds: number) => {
