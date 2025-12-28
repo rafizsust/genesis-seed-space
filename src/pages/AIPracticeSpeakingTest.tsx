@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useAudioClipQueue } from '@/hooks/useAudioClipQueue';
 import { AIExaminerAvatar } from '@/components/speaking/AIExaminerAvatar';
+import { ClipPlayingIndicator } from '@/components/speaking/ClipPlayingIndicator';
+import { getExaminerVoice } from '@/components/speaking/ExaminerVoiceSelector';
 import { TestStartOverlay } from '@/components/common/TestStartOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -575,10 +577,12 @@ export default function AIPracticeSpeakingTest() {
       throw new Error('No speaking content found to generate audio');
     }
 
+    const voiceName = getExaminerVoice();
+
     const { data, error } = await supabase.functions.invoke('generate-gemini-tts', {
       body: {
         items,
-        voiceName: 'Kore',
+        voiceName,
       },
     });
 
@@ -931,6 +935,9 @@ export default function AIPracticeSpeakingTest() {
           {/* AI Examiner Panel */}
           <div className="space-y-4">
             <AIExaminerAvatar isListening={isRecording} isSpeaking={examinerAudio.isSpeaking} className="w-full h-48 lg:h-64" />
+
+            {/* Current clip indicator */}
+            <ClipPlayingIndicator currentClipKey={examinerAudio.currentClipKey} failedClips={examinerAudio.failedClips} />
 
             {/* Connection status */}
             <Card className="bg-muted/50">
