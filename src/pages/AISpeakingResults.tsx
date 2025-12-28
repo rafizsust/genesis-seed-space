@@ -32,6 +32,8 @@ import { cn } from '@/lib/utils';
 
 interface CriterionScore {
   score: number;
+  feedback?: string;
+  examples?: string[];
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];
@@ -58,13 +60,24 @@ interface ModelAnswer {
   keyFeatures: string[];
 }
 
+interface TranscriptEntry {
+  question_number: number;
+  question_text: string;
+  transcript: string;
+}
+
 interface EvaluationReport {
   overall_band: number;
   overallBand?: number;
   fluency_coherence: CriterionScore;
   fluencyCoherence?: CriterionScore;
   lexical_resource: CriterionScore;
-  lexicalResource?: { score: number; feedback: string; examples: string[]; lexicalUpgrades?: LexicalUpgrade[] };
+  lexicalResource?: {
+    score: number;
+    feedback: string;
+    examples: string[];
+    lexicalUpgrades?: LexicalUpgrade[];
+  };
   grammatical_range: CriterionScore;
   grammaticalRange?: CriterionScore;
   pronunciation: CriterionScore;
@@ -86,6 +99,10 @@ interface SpeakingResult {
   overall_band: number;
   evaluation_report: EvaluationReport | null;
   audio_urls: Record<string, string>;
+  candidate_transcripts: {
+    by_part: Record<number, string>;
+    by_question?: Record<number, TranscriptEntry[]>;
+  };
   created_at: string;
 }
 
@@ -101,35 +118,57 @@ function normalizeEvaluationReport(raw: any): EvaluationReport {
 
   const asArray = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
 
-  const normalizeCriterion = (v: any): CriterionScore => ({
-    score: toNumber(v?.score, 0),
-    strengths: asArray<string>(v?.strengths),
-    weaknesses: asArray<string>(v?.weaknesses ?? v?.errors),
-    suggestions: asArray<string>(v?.suggestions ?? v?.notes),
-  });
+  const normalizeCriterion = (v: any): CriterionScore => {
+    const feedback = typeof v?.feedback === 'string' ? v.feedback : undefined;
+    const examples = asArray<string>(v?.examples);
+
+    const strengths = asArray<string>(v?.strengths);
+    const weaknesses = asArray<string>(v?.weaknesses ?? v?.errors);
+    const suggestions = asArray<string>(v?.suggestions ?? v?.notes);
+
+    return {
+      score: toNumber(v?.score, 0),
+      feedback,
+      examples,
+      strengths: strengths.length ? strengths : examples,
+      weaknesses,
+      suggestions: suggestions.length ? suggestions : feedback ? [feedback] : [],
+    };
+  };
 
   const overallBand = toNumber(raw?.overall_band ?? raw?.overallBand, 0);
 
-  const lexicalUpgrades = (() => {
+  const lexicalUpgrades: LexicalUpgrade[] = (() => {
     const direct = raw?.lexical_upgrades;
-    if (Array.isArray(direct)) return direct as LexicalUpgrade[];
-
     const lr = raw?.lexical_resource ?? raw?.lexicalResource;
     const nested = lr?.lexicalUpgrades ?? lr?.lexical_upgrades;
-    return asArray<LexicalUpgrade>(nested);
+    const list = Array.isArray(direct) ? direct : Array.isArray(nested) ? nested : [];
+    return list.map((u: any) => ({
+      original: String(u?.original ?? ''),
+      upgraded: String(u?.upgraded ?? ''),
+      context: String(u?.context ?? ''),
+    }));
   })();
 
-  const partAnalysis = (() => {
-    if (Array.isArray(raw?.part_analysis)) return raw.part_analysis as PartAnalysis[];
+  const partAnalysis: PartAnalysis[] = (() => {
+    const list = Array.isArray(raw?.part_analysis) ? raw.part_analysis : asArray<any>(raw?.partAnalysis);
 
-    const camel = asArray<any>(raw?.partAnalysis);
-    return camel.map((p) => ({
-      part_number: toNumber(p?.partNumber ?? p?.part_number, 0),
-      performance_notes: '',
-      key_moments: asArray<string>(p?.strengths),
-      areas_for_improvement: asArray<string>(p?.improvements),
-    })) as PartAnalysis[];
+    return list.map((p: any) => {
+      const partNumber = toNumber(p?.part_number ?? p?.partNumber ?? p?.part_number, 0);
+      const keyMoments = asArray<string>(p?.key_moments ?? p?.strengths);
+      const areas = asArray<string>(p?.areas_for_improvement ?? p?.improvements);
+      const notes = String(p?.performance_notes ?? p?.performanceNotes ?? p?.feedback ?? '');
+
+      return {
+        part_number: partNumber,
+        performance_notes: notes,
+        key_moments: keyMoments,
+        areas_for_improvement: areas,
+      };
+    });
   })();
+
+  const modelAnswers = asArray<ModelAnswer>(raw?.modelAnswers ?? raw?.model_answers);
 
   return {
     overall_band: overallBand,
@@ -142,8 +181,32 @@ function normalizeEvaluationReport(raw: any): EvaluationReport {
     improvement_priorities: asArray<string>(raw?.improvement_priorities ?? raw?.priorityImprovements),
     strengths_to_maintain: asArray<string>(raw?.strengths_to_maintain ?? raw?.keyStrengths),
     examiner_notes: String(raw?.examiner_notes ?? raw?.summary ?? ''),
-    modelAnswers: asArray<ModelAnswer>(raw?.modelAnswers ?? raw?.model_answers),
+    modelAnswers,
   };
+}
+
+function normalizeSpeakingAnswers(raw: any): {
+  audioUrls: Record<string, string>;
+  transcriptsByPart: Record<number, string>;
+  transcriptsByQuestion?: Record<number, TranscriptEntry[]>;
+} {
+  // New format: { audio_urls, transcripts_by_part, transcripts_by_question }
+  const audioUrls: Record<string, string> =
+    raw && typeof raw === 'object' && raw.audio_urls && typeof raw.audio_urls === 'object'
+      ? (raw.audio_urls as Record<string, string>)
+      : {};
+
+  const transcriptsByPart: Record<number, string> =
+    raw && typeof raw === 'object' && raw.transcripts_by_part && typeof raw.transcripts_by_part === 'object'
+      ? (raw.transcripts_by_part as Record<number, string>)
+      : (raw && typeof raw === 'object' ? (raw as Record<number, string>) : {});
+
+  const transcriptsByQuestion =
+    raw && typeof raw === 'object' && raw.transcripts_by_question && typeof raw.transcripts_by_question === 'object'
+      ? (raw.transcripts_by_question as Record<number, TranscriptEntry[]>)
+      : undefined;
+
+  return { audioUrls, transcriptsByPart, transcriptsByQuestion };
 }
 
 export default function AISpeakingResults() {
@@ -196,13 +259,18 @@ export default function AISpeakingResults() {
       }
 
       const report = normalizeEvaluationReport(data.question_results);
+      const { audioUrls, transcriptsByPart, transcriptsByQuestion } = normalizeSpeakingAnswers(data.answers);
 
       setResult({
         id: data.id,
         test_id: data.test_id,
         overall_band: data.band_score || report.overall_band || 0,
         evaluation_report: report,
-        audio_urls: (data.answers as Record<string, string>) || {},
+        audio_urls: audioUrls,
+        candidate_transcripts: {
+          by_part: transcriptsByPart,
+          by_question: transcriptsByQuestion,
+        },
         created_at: data.completed_at,
       });
       setLoading(false);
@@ -326,8 +394,9 @@ export default function AISpeakingResults() {
           </Card>
 
           <Tabs defaultValue="criteria" className="mb-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="criteria">Criteria</TabsTrigger>
+              <TabsTrigger value="transcript">Transcript</TabsTrigger>
               <TabsTrigger value="model">Model Answers</TabsTrigger>
               <TabsTrigger value="lexical">Lexical</TabsTrigger>
               <TabsTrigger value="parts">Parts</TabsTrigger>
@@ -456,6 +525,48 @@ export default function AISpeakingResults() {
                       Model answers will appear here after your test is fully evaluated.
                     </p>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Candidate Transcript */}
+            <TabsContent value="transcript" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                    Your Transcript
+                  </CardTitle>
+                  <CardDescription>
+                    What the app captured from your speech, organized by part and question.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {[1, 2, 3].map((part) => {
+                    const byQuestion = result.candidate_transcripts.by_question?.[part];
+                    const byPart = result.candidate_transcripts.by_part?.[part];
+
+                    return (
+                      <div key={part} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">Part {part}</Badge>
+                        </div>
+
+                        {Array.isArray(byQuestion) && byQuestion.length > 0 ? (
+                          <div className="space-y-3">
+                            {byQuestion.map((q, i) => (
+                              <div key={`${q.question_number}-${i}`} className="space-y-1">
+                                <p className="text-sm font-medium">Q{q.question_number}: {q.question_text}</p>
+                                <p className="text-sm text-muted-foreground whitespace-pre-line">{q.transcript || '(No response recorded)'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground whitespace-pre-line">{byPart || '(No response recorded)'}</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             </TabsContent>
