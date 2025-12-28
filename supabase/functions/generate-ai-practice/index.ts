@@ -1316,15 +1316,17 @@ Return ONLY valid JSON (no markdown code blocks) in this exact format:
 
 CRITICAL RULES:
 1. Tables MUST have EXACTLY 3 COLUMNS (no more, no less).
-2. Use inline blanks with __ (double underscores) within cell content.
-   - Example: "Morning session starts with __" where __ is the blank
+2. For cells with blanks (has_question: true):
+   - DO NOT use underscores in the content - the input field will be rendered automatically
+   - Place text BEFORE and/or AFTER where the blank should appear using "_____" (5 underscores) as a placeholder
+   - VARY the blank position: start, middle, or end of the cell content
+   - Examples:
+     * Start: {"content": "_____ is required", "has_question": true, "question_number": 1} → renders as [input] is required
+     * Middle: {"content": "The main _____ building", "has_question": true, "question_number": 2} → renders as The main [input] building
+     * End: {"content": "Located near the _____", "has_question": true, "question_number": 3} → renders as Located near the [input]
+     * Blank only: {"content": "_____", "has_question": true, "question_number": 4} → renders as just [input]
 3. DISTRIBUTE blanks across BOTH column 2 AND column 3. Do NOT put all blanks only in one column.
-4. Answer length MUST VARY - use ONE word, TWO words, or THREE words AND/OR a number:
-   - Some answers should be exactly 1 word (e.g., "registration")
-   - Some answers should be exactly 2 words (e.g., "coffee break")
-   - Some answers can be 3 words (e.g., "main conference room")
-   - Numbers are acceptable: "15", "9:30", "1985"
-   - Maximum allowed is 3 words AND/OR a number, but do NOT make all answers the same length
+4. Answer length MUST VARY - use ONE word, TWO words, or THREE words AND/OR a number.
 
 Return ONLY valid JSON (no markdown code blocks) in this exact format:
 {
@@ -1333,12 +1335,12 @@ Return ONLY valid JSON (no markdown code blocks) in this exact format:
   "instruction": "Complete the table below. Write NO MORE THAN THREE WORDS AND/OR A NUMBER for each answer.",
   "table_data": [
     [{"content": "Time", "is_header": true}, {"content": "Activity", "is_header": true}, {"content": "Location", "is_header": true}],
-    [{"content": "9:00 AM"}, {"content": "Session starts with __", "has_question": true, "question_number": 1}, {"content": "Main Hall"}],
-    [{"content": "11:00 AM"}, {"content": "Break time"}, {"content": "Held in __", "has_question": true, "question_number": 2}]
+    [{"content": "9:00 AM"}, {"content": "_____ and welcome", "has_question": true, "question_number": 1}, {"content": "Main Hall"}],
+    [{"content": "11:00 AM"}, {"content": "Coffee break"}, {"content": "Held in the _____", "has_question": true, "question_number": 2}]
   ],
   "questions": [
-    {"question_number": 1, "question_text": "Activity at 9 AM", "correct_answer": "registration", "explanation": "Speaker mentions registration at 9"},
-    {"question_number": 2, "question_text": "Location at 11 AM", "correct_answer": "main conference room", "explanation": "Main conference room mentioned for 11 AM"}
+    {"question_number": 1, "question_text": "Activity at 9 AM", "correct_answer": "Registration", "explanation": "Speaker mentions registration at 9"},
+    {"question_number": 2, "question_text": "Location at 11 AM", "correct_answer": "garden area", "explanation": "Garden area mentioned for coffee break location"}
   ]
 }`;
 
@@ -1405,12 +1407,17 @@ Return ONLY valid JSON (no markdown code blocks) in this exact format:
     case 'MATCHING_CORRECT_LETTER':
       return basePrompt + `2. Create ${questionCount} matching questions where listeners match items to categories.
 
+IMPORTANT FOR OPTIONS:
+- Do NOT include the letter prefix in option text (the UI adds it automatically)
+- WRONG: "A Recommended" or "A. Recommended"
+- CORRECT: "Recommended" (just the text, no letter)
+
 Return ONLY valid JSON (no markdown code blocks) in this exact format:
 {
   "dialogue": "Speaker1: Let me describe each option...\\nSpeaker2: Yes, I need to choose...",
   "speaker_names": {"Speaker1": "Advisor", "Speaker2": "Client"},
   "instruction": "What does the speaker say about each item? Choose the correct letter, A-C.",
-  "options": ["A Recommended", "B Not recommended", "C Depends on situation"],
+  "options": ["Recommended", "Not recommended", "Depends on situation"],
   "questions": [
     {
       "question_number": 1,
