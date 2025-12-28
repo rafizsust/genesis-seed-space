@@ -37,24 +37,28 @@ interface PracticeModelAnswer {
   keyFeatures: string[];
 }
 
-// IELTS Official Timings
+// IELTS 2025 Official Timings
 const PART_TIMINGS = {
-  1: { totalMinutes: 5, questionTime: 45 },
-  2: { prepTime: 60, speakTime: 120, roundingQuestions: 30 },
-  3: { totalMinutes: 5, questionTime: 60 }
+  1: { totalMinutes: 5, questionTime: 30 }, // 30s per question, 4-5 min total
+  2: { prepTime: 60, speakTime: 120 }, // 1-min prep, 2-min max speaking
+  3: { totalMinutes: 5, questionTime: 45 } // 45-60s per complex question
 };
+
+// Part 2 speaking minimum threshold for fluency flag (80 seconds = 1:20)
+const PART2_MIN_SPEAKING_SECONDS = 80;
 
 type TestPhase = 
   | 'connecting' 
   | 'identity_check'
   | 'part1_intro'
   | 'part1_questions'
+  | 'part1_question_recording' // New: 30s recording countdown per question
   | 'part2_intro'
   | 'part2_prep'
   | 'part2_speaking'
-  | 'part2_rounding'
   | 'part3_intro'
   | 'part3_questions'
+  | 'part3_question_recording' // New: 45-60s recording per question
   | 'submitting'
   | 'done';
 
@@ -63,6 +67,9 @@ interface PartRecording {
   chunks: Blob[];
   startTime: number;
   transcript: string;
+  speakingDuration?: number; // Track Part 2 speaking duration for fluency flag
+  audioBase64?: string;
+  duration?: number;
 }
 
 export default function AIPracticeSpeakingTest() {
@@ -97,6 +104,7 @@ export default function AIPracticeSpeakingTest() {
   const audioChunksRef = useRef<Blob[]>([]);
   const testStartTimeRef = useRef<number>(Date.now());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const part2SpeakingStartRef = useRef<number>(0); // Track Part 2 speaking start for fluency flag
 
   // Gemini Speaking Hook (REST + Browser Speech APIs)
   const gemini = useGeminiSpeaking({
@@ -198,26 +206,160 @@ export default function AIPracticeSpeakingTest() {
     };
   }, [timeLeft, phase]);
 
+  // Transition to Part 3 - defined first to avoid circular reference
+  const transitionToPart3 = useCallback(() => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+    gemini.stopListening();
+    setIsRecording(false);
+    
+    // Save chunks to current part
+    setPartRecordings(prev => {
+      const current = prev[2];
+      if (current) {
+        return {
+          ...prev,
+          2: {
+            ...current,
+            chunks: [...current.chunks, ...audioChunksRef.current]
+          }
+        };
+      }
+      return prev;
+    });
+    
+    // Upload Part 2 audio
+    const recording = partRecordings[2];
+    if (recording && recording.chunks.length > 0) {
+      const audioBlob = new Blob(recording.chunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setPartRecordings(prev => ({
+          ...prev,
+          2: {
+            ...prev[2],
+            audioBase64: base64,
+            duration: Math.floor((Date.now() - recording.startTime) / 1000)
+          }
+        }));
+      };
+      reader.readAsDataURL(audioBlob);
+    }
+    
+    setPhase('part3_intro');
+    setCurrentPart(3);
+    
+    // Initialize Part 3 recording
+    setPartRecordings(prev => ({
+      ...prev,
+      3: {
+        partNumber: 3,
+        chunks: [],
+        startTime: Date.now(),
+        transcript: ''
+      }
+    }));
+    audioChunksRef.current = [];
+
+    gemini.sendText("Part 2 is complete. Please transition to Part 3. Say: 'We've been talking about the Part 2 topic, and I'd like to discuss some related questions. In this part, I will ask you some more abstract discussion questions. This will take about 4 to 5 minutes.' Then ask 4-6 abstract discussion questions, allowing 45-60 seconds per response.");
+    
+    setTimeout(async () => {
+      setPhase('part3_questions');
+      // Start recording for Part 3
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        await gemini.startListening();
+      } catch (err) {
+        console.error('Recording error:', err);
+      }
+    }, 3000);
+  }, [gemini, partRecordings]);
+
   // Handle time up for different phases
   const handleTimeUp = useCallback(() => {
     switch (phase) {
+      case 'part1_question_recording':
+        // 30s recording time for Part 1 question is up - AI asks next question
+        if (mediaRecorderRef.current?.state === 'recording') {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+        }
+        gemini.stopListening();
+        setIsRecording(false);
+        setPhase('part1_questions');
+        gemini.sendText("The candidate's response time is up. Please ask the next question.");
+        break;
       case 'part2_prep':
+        // 1-minute preparation time is over - transition audio
         setPhase('part2_speaking');
         setTimeLeft(PART_TIMINGS[2].speakTime);
-        gemini.sendText("The candidate's preparation time is over. Please tell them to start speaking now.");
+        part2SpeakingStartRef.current = Date.now();
+        gemini.sendText("Say this exactly: 'Your one minute preparation time is over. Please start speaking now. You have two minutes.'");
+        // Start recording after AI finishes the transition audio
+        setTimeout(async () => {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            recorder.ondataavailable = (e) => {
+              if (e.data.size > 0) {
+                audioChunksRef.current.push(e.data);
+              }
+            };
+            recorder.start(1000);
+            mediaRecorderRef.current = recorder;
+            setIsRecording(true);
+            await gemini.startListening();
+          } catch (err) {
+            console.error('Recording error:', err);
+          }
+        }, 2500);
         break;
       case 'part2_speaking':
-        setPhase('part2_rounding');
-        setTimeLeft(PART_TIMINGS[2].roundingQuestions);
-        gemini.sendText("The candidate has finished their long turn. Please ask 1-2 brief rounding-off questions.");
+        // 2-minute speaking time is up - stop audio
+        if (mediaRecorderRef.current?.state === 'recording') {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+        }
+        gemini.stopListening();
+        setIsRecording(false);
+        
+        // Calculate speaking duration for fluency flag
+        const speakingDuration = (Date.now() - part2SpeakingStartRef.current) / 1000;
+        setPartRecordings(prev => ({
+          ...prev,
+          2: { ...prev[2], speakingDuration }
+        }));
+        
+        gemini.sendText("Say: 'Thank you. We will now move on to Part 3.'");
+        setTimeout(() => transitionToPart3(), 2500);
         break;
-      case 'part2_rounding':
-        transitionToPart3();
+      case 'part3_question_recording':
+        // 45-60s recording time for Part 3 question is up
+        if (mediaRecorderRef.current?.state === 'recording') {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+        }
+        gemini.stopListening();
+        setIsRecording(false);
+        setPhase('part3_questions');
+        gemini.sendText("The candidate's response time is up. Please ask the next discussion question.");
         break;
       default:
         break;
     }
-  }, [phase, gemini]);
+  }, [phase, gemini, transitionToPart3]);
 
   // Start identity check
   const startIdentityCheck = useCallback(() => {
@@ -225,28 +367,89 @@ export default function AIPracticeSpeakingTest() {
     gemini.sendText("Please begin the IELTS Speaking test with the standard identity check. Greet the candidate and ask for their name.");
   }, [gemini]);
 
-  // Start Part 1
+  // Start Part 1 with 2025 official timing
   const startPart1 = useCallback(() => {
     setPhase('part1_intro');
     setCurrentPart(1);
-    initializePartRecording(1);
     
-    gemini.sendText("Identity check complete. Please proceed to Part 1. Ask questions about 2 familiar topics (e.g., home, work, studies, hobbies).");
+    // Initialize Part 1 recording
+    setPartRecordings(prev => ({
+      ...prev,
+      1: {
+        partNumber: 1,
+        chunks: [],
+        startTime: Date.now(),
+        transcript: ''
+      }
+    }));
+    audioChunksRef.current = [];
     
-    setTimeout(() => {
+    gemini.sendText("Identity check complete. Please proceed to Part 1. Say: 'In this first part, I'm going to ask you some questions about yourself. This will take about 4 to 5 minutes.' Then ask questions about 2 familiar topics. After each question, the candidate has exactly 30 seconds to respond.");
+    
+    setTimeout(async () => {
       setPhase('part1_questions');
-      startRecording();
+      // Start recording for Part 1
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        await gemini.startListening();
+      } catch (err) {
+        console.error('Recording error:', err);
+      }
     }, 2000);
   }, [gemini]);
 
   // Transition to Part 2
   const transitionToPart2 = useCallback(() => {
-    stopRecording();
-    uploadPartAudio(1); // Three-envelope: upload Part 1 immediately
+    // Stop recording
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+    gemini.stopListening();
+    setIsRecording(false);
+    
+    // Upload Part 1 audio
+    const recording = partRecordings[1];
+    if (recording && recording.chunks.length > 0) {
+      const audioBlob = new Blob([...recording.chunks, ...audioChunksRef.current], { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setPartRecordings(prev => ({
+          ...prev,
+          1: {
+            ...prev[1],
+            audioBase64: base64,
+            duration: Math.floor((Date.now() - recording.startTime) / 1000)
+          }
+        }));
+      };
+      reader.readAsDataURL(audioBlob);
+    }
     
     setPhase('part2_intro');
     setCurrentPart(2);
-    initializePartRecording(2);
+    
+    // Initialize Part 2 recording
+    setPartRecordings(prev => ({
+      ...prev,
+      2: {
+        partNumber: 2,
+        chunks: [],
+        startTime: Date.now(),
+        transcript: ''
+      }
+    }));
+    audioChunksRef.current = [];
 
     gemini.sendText(`Now introduce Part 2. Tell the candidate: "Now I'm going to give you a topic, and I'd like you to talk about it for one to two minutes. Before you talk, you'll have one minute to think about what you're going to say."`);
     
@@ -254,48 +457,37 @@ export default function AIPracticeSpeakingTest() {
       setPhase('part2_prep');
       setTimeLeft(PART_TIMINGS[2].prepTime);
     }, 4000);
-  }, [gemini, test]);
+  }, [gemini, partRecordings]);
 
-  // Start Part 2 speaking
+  // Start Part 2 speaking (manual trigger if user is ready early)
   const startPart2Speaking = useCallback(() => {
     setPhase('part2_speaking');
     setTimeLeft(PART_TIMINGS[2].speakTime);
-    startRecording();
+    part2SpeakingStartRef.current = Date.now();
+    
     gemini.sendText("The candidate is ready. Say: 'All right? Remember, you have one to two minutes for this. I'll tell you when the time is up. Can you start speaking now, please?'");
-  }, [gemini]);
-
-  // Transition to Part 3
-  const transitionToPart3 = useCallback(() => {
-    stopRecording();
-    uploadPartAudio(2); // Three-envelope: upload Part 2 immediately
     
-    setPhase('part3_intro');
-    setCurrentPart(3);
-    initializePartRecording(3);
-
-    gemini.sendText("Part 2 is complete. Please transition to Part 3. Say: 'We've been talking about [the Part 2 topic], and I'd like to discuss some related questions.' Then ask 4-6 abstract discussion questions.");
-    
-    setTimeout(() => {
-      setPhase('part3_questions');
-      startRecording();
-    }, 3000);
-  }, [gemini]);
-
-  // Initialize recording for a part
-  const initializePartRecording = (partNumber: number) => {
-    setPartRecordings(prev => ({
-      ...prev,
-      [partNumber]: {
-        partNumber,
-        chunks: [],
-        startTime: Date.now(),
-        transcript: ''
+    // Start recording after AI finishes speaking
+    setTimeout(async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        await gemini.startListening();
+      } catch (err) {
+        console.error('Recording error:', err);
       }
-    }));
-    audioChunksRef.current = [];
-  };
+    }, 2500);
+  }, [gemini]);
 
-  // Start recording
+  // Start recording helper
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -395,13 +587,22 @@ export default function AIPracticeSpeakingTest() {
       // Prepare submission data
       const partAudios = Object.values(partRecordings).map(r => ({
         partNumber: r.partNumber,
-        audioBase64: (r as any).audioBase64 || '',
-        duration: (r as any).duration || 0
+        audioBase64: r.audioBase64 || '',
+        duration: r.duration || 0
       })).filter(p => p.audioBase64);
 
       const transcripts = Object.fromEntries(
         Object.entries(partRecordings).map(([k, v]) => [k, v.transcript])
       );
+
+      // Check Part 2 speaking duration for fluency flag (2025 precision standard)
+      const part2Recording = partRecordings[2];
+      const part2SpeakingDuration = part2Recording?.speakingDuration || 0;
+      const fluencyFlag = part2SpeakingDuration < PART2_MIN_SPEAKING_SECONDS;
+      
+      if (fluencyFlag) {
+        console.log(`Part 2 speaking duration (${part2SpeakingDuration}s) below minimum (${PART2_MIN_SPEAKING_SECONDS}s) - flagging fluency`);
+      }
 
       // Submit for evaluation
       const { error } = await supabase.functions.invoke('evaluate-ai-speaking', {
@@ -410,7 +611,9 @@ export default function AIPracticeSpeakingTest() {
           partAudios,
           transcripts,
           topic: test?.topic,
-          difficulty: test?.difficulty
+          difficulty: test?.difficulty,
+          part2SpeakingDuration, // Send for 2025 precision fluency evaluation
+          fluencyFlag // Flag if Part 2 < 1:20
         }
       });
 

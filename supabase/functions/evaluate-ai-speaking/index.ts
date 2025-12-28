@@ -18,6 +18,8 @@ interface EvaluationRequest {
   transcripts?: Record<number, string>;
   topic?: string;
   difficulty?: string;
+  part2SpeakingDuration?: number; // 2025 precision: track Part 2 speaking time
+  fluencyFlag?: boolean; // Flag if Part 2 < 80 seconds (1:20)
 }
 
 serve(async (req) => {
@@ -49,10 +51,13 @@ serve(async (req) => {
     }
 
     const body: EvaluationRequest = await req.json();
-    const { testId, partAudios, transcripts, topic, difficulty } = body;
+    const { testId, partAudios, transcripts, topic, difficulty, part2SpeakingDuration, fluencyFlag } = body;
 
     console.log(`Evaluating speaking test ${testId} for user ${user.id}`);
     console.log(`Parts received: ${partAudios.length}`);
+    if (fluencyFlag) {
+      console.log(`Fluency flag active: Part 2 speaking duration was ${part2SpeakingDuration}s (under 80s threshold)`);
+    }
 
     // Upload audio files to storage
     const audioUrls: Record<number, string> = {};
@@ -74,7 +79,7 @@ serve(async (req) => {
     }
 
     // Build evaluation prompt with 2025 precision standards
-    const evaluationPrompt = buildEvaluationPrompt(transcripts, topic, difficulty);
+    const evaluationPrompt = buildEvaluationPrompt(transcripts, topic, difficulty, part2SpeakingDuration, fluencyFlag);
 
     // Call Lovable AI for evaluation
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -261,17 +266,32 @@ SCORING CRITERIA (Band Descriptors):
 Be encouraging but honest. Provide specific examples from the transcript.`;
 }
 
-function buildEvaluationPrompt(transcripts?: Record<number, string>, topic?: string, difficulty?: string): string {
+function buildEvaluationPrompt(
+  transcripts?: Record<number, string>, 
+  topic?: string, 
+  difficulty?: string,
+  part2SpeakingDuration?: number,
+  fluencyFlag?: boolean
+): string {
   let prompt = `Please evaluate this IELTS Speaking test performance.\n\n`;
   
   if (topic) {
     prompt += `TEST TOPIC: ${topic}\n`;
   }
   if (difficulty) {
-    prompt += `DIFFICULTY LEVEL: ${difficulty}\n\n`;
+    prompt += `DIFFICULTY LEVEL: ${difficulty}\n`;
+  }
+  
+  // 2025 Precision Standards: Part 2 Duration Analysis
+  if (part2SpeakingDuration !== undefined) {
+    prompt += `\nPART 2 SPEAKING DURATION: ${Math.floor(part2SpeakingDuration)} seconds`;
+    if (fluencyFlag) {
+      prompt += ` (BELOW 80-SECOND THRESHOLD - FLAG FLUENCY AS POTENTIAL SCORE REDUCTION AREA)`;
+    }
+    prompt += '\n';
   }
 
-  prompt += `CANDIDATE'S RESPONSES:\n\n`;
+  prompt += `\nCANDIDATE'S RESPONSES:\n\n`;
 
   if (transcripts) {
     for (const [part, text] of Object.entries(transcripts)) {
@@ -295,6 +315,14 @@ function buildEvaluationPrompt(transcripts?: Record<number, string>, topic?: str
    - Clear organization and development of ideas
    
    For each model answer, explain what makes it a Band 8+ response.`;
+
+  // Add specific instruction for fluency flag
+  if (fluencyFlag) {
+    prompt += `\n\n**IMPORTANT 2025 PRECISION STANDARD**: The candidate spoke for only ${Math.floor(part2SpeakingDuration || 0)} seconds in Part 2, which is significantly below the expected 1:20 minimum (80 seconds). This MUST be flagged as a potential score reduction area in the Fluency & Coherence criterion. Specifically note that:
+- The candidate did not sustain speech for the expected duration
+- This affects their ability to demonstrate extended discourse
+- Include this as a priority improvement area`;
+  }
 
   return prompt;
 }
