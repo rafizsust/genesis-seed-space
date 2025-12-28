@@ -1,9 +1,38 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Decrypt user's Gemini API key
+async function decryptApiKey(encryptedValue: string, encryptionKey: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  
+  const combined = Uint8Array.from(atob(encryptedValue), c => c.charCodeAt(0));
+  const iv = combined.slice(0, 12);
+  const encryptedData = combined.slice(12);
+  
+  const keyData = encoder.encode(encryptionKey);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyData.slice(0, 32),
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+  
+  const decryptedData = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    cryptoKey,
+    encryptedData
+  );
+  
+  return decoder.decode(decryptedData);
+}
 
 // Generate ephemeral token for Gemini Live API
 serve(async (req) => {
@@ -12,10 +41,55 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    // Create Supabase client with user's auth
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    );
+
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(JSON.stringify({ 
+        error: 'Unauthorized. Please log in to use AI Speaking.' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    // Retrieve user's encrypted Gemini API key
+    const { data: userSecret, error: secretError } = await supabaseClient
+      .from('user_secrets')
+      .select('encrypted_value')
+      .eq('user_id', user.id)
+      .eq('secret_name', 'GEMINI_API_KEY')
+      .single();
+
+    if (secretError || !userSecret) {
+      console.error('Secret retrieval error:', secretError);
+      return new Response(JSON.stringify({ 
+        error: 'Gemini API key not found. Please add your API key in Settings.' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Decrypt the API key
+    const appEncryptionKey = Deno.env.get('app_encryption_key');
+    if (!appEncryptionKey) {
+      throw new Error('app_encryption_key not configured');
+    }
+
+    const geminiApiKey = await decryptApiKey(userSecret.encrypted_value, appEncryptionKey);
 
     const { partType, difficulty, topic, voiceName } = await req.json();
 
@@ -45,11 +119,13 @@ serve(async (req) => {
       }
     };
 
+    console.log('Session created for user:', user.id, 'with voice:', selectedVoice);
+
     // Return the session configuration for client-side WebSocket connection
     return new Response(JSON.stringify({
       success: true,
       sessionConfig,
-      apiKey: LOVABLE_API_KEY, // Client needs this to connect to Gemini
+      apiKey: geminiApiKey, // User's own decrypted API key
       wsEndpoint: 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
