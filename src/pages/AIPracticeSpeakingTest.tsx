@@ -20,6 +20,7 @@ import {
   Loader2,
   Play,
   Pause,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -293,6 +294,40 @@ export default function AIPracticeSpeakingTest() {
     }
 
     setIsRecording(false);
+  };
+
+  // Restart recording for the current question - clears chunks and restarts
+  const restartRecording = async () => {
+    // Stop current recording if active
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === 'recording') {
+      recorder.stop();
+      recorder.stream.getTracks().forEach((t) => t.stop());
+    }
+    
+    // Clear current chunks
+    audioChunksRef.current = [];
+    
+    // Clear the audio segment for the current question
+    const meta = getActiveSegmentMeta();
+    if (meta?.key) {
+      setAudioSegments((prev) => {
+        const next = { ...prev };
+        delete next[meta.key];
+        return next;
+      });
+    }
+    
+    setIsRecording(false);
+    
+    // Small delay then restart
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await startRecording();
+    
+    toast({
+      title: 'Recording Restarted',
+      description: 'Your previous recording has been cleared.',
+    });
   };
 
   const speakText = (text: string) => {
@@ -960,7 +995,7 @@ export default function AIPracticeSpeakingTest() {
           </Card>
         )}
 
-        {/* Recording indicator with Stop & Next button */}
+        {/* Recording indicator with Stop & Next and Restart buttons */}
         {isRecording && (
           <div className="flex flex-col items-center gap-4 py-8">
             <div className="relative">
@@ -972,15 +1007,28 @@ export default function AIPracticeSpeakingTest() {
             <p className="text-muted-foreground">Recording your response...</p>
             <p className="text-sm text-muted-foreground">Time remaining: {formatTime(timeLeft)}</p>
             
-            {/* Stop & Next button */}
-            <Button 
-              onClick={handleStopAndNext} 
-              variant="outline" 
-              size="lg"
-              className="mt-4"
-            >
-              Stop & Move to Next
-            </Button>
+            {/* Action buttons */}
+            <div className="flex items-center gap-3 mt-4">
+              {/* Restart Recording button */}
+              <Button 
+                onClick={restartRecording} 
+                variant="outline" 
+                size="lg"
+                className="gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Restart Recording
+              </Button>
+              
+              {/* Stop & Next button */}
+              <Button 
+                onClick={handleStopAndNext} 
+                variant="default" 
+                size="lg"
+              >
+                Stop & Move to Next
+              </Button>
+            </div>
           </div>
         )}
 

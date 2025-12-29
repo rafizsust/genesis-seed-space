@@ -121,6 +121,7 @@ export default function AIPracticeListeningTest() {
   const [activePartIndex, setActivePartIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
   const [showStartOverlay, setShowStartOverlay] = useState(true);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
@@ -297,6 +298,14 @@ export default function AIPracticeListeningTest() {
     }
     setIsPlaying(!isPlaying);
   };
+
+  // Pause audio when test is paused
+  useEffect(() => {
+    if (isPaused && audioRef.current && isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    }
+  }, [isPaused]);
 
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed);
@@ -656,8 +665,8 @@ export default function AIPracticeListeningTest() {
               <ListeningTimer 
                 timeLeft={timeLeft} 
                 setTimeLeft={setTimeLeft} 
-                isPaused={!testStarted}
-                onTogglePause={() => {}}
+                isPaused={!testStarted || isPaused}
+                onTogglePause={() => setIsPaused(!isPaused)}
               />
               <button 
                 className="p-2 rounded transition-colors ielts-icon-btn"
