@@ -240,9 +240,9 @@ serve(async (req) => {
           signal: controller.signal,
           body: JSON.stringify({
             contents,
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 8192, // Increased for full test transcripts
+          generationConfig: {
+              temperature: 0.5, // Higher temperature for more varied, nuanced scoring
+              maxOutputTokens: 8192,
               responseMimeType: 'application/json',
             },
           }),
@@ -515,6 +515,40 @@ You MUST base the score on what you hear in the audio.
 If there is no speech in the audio, score appropriately and explain why.
 
 ${topic ? `TEST TOPIC: ${topic}\n` : ''}${difficulty ? `DIFFICULTY: ${difficulty}\n` : ''}${typeof part2SpeakingDuration === 'number' ? `PART 2 SPEAKING DURATION: ${Math.floor(part2SpeakingDuration)} seconds\n` : ''}${fluencyFlag ? `FLUENCY FLAG: Part 2 was below 80 seconds\n` : ''}
+
+CRITICAL SCORING GUIDELINES:
+You MUST score each criterion INDEPENDENTLY based on the specific evidence you observe. Each criterion measures DIFFERENT skills:
+
+FLUENCY & COHERENCE (assess speech flow and organization):
+- Band 9: Speaks fluently with only rare repetition or self-correction; discourse is coherent with fully appropriate cohesive features
+- Band 7: Speaks at length without noticeable effort; may demonstrate language-related hesitation; uses a range of connectives
+- Band 5: Usually maintains flow but uses repetition, self-correction and/or slow speech; over-uses connectives
+- Band 3: Speaks with long pauses; limited ability to link simple sentences
+
+LEXICAL RESOURCE (assess vocabulary range and precision):
+- Band 9: Uses vocabulary with full flexibility and precision in all topics; uses idiomatic language naturally
+- Band 7: Uses vocabulary flexibly to discuss a variety of topics; uses some less common and idiomatic vocabulary
+- Band 5: Manages to talk about familiar and unfamiliar topics but uses vocabulary with limited flexibility
+- Band 3: Uses simple vocabulary to convey personal information; insufficient vocabulary for less familiar topics
+
+GRAMMATICAL RANGE & ACCURACY (assess sentence structures and error frequency):
+- Band 9: Uses a full range of structures naturally and appropriately; produces consistently accurate structures
+- Band 7: Uses a range of complex structures with some flexibility; frequently produces error-free sentences
+- Band 5: Produces basic sentence forms with reasonable accuracy; uses complex structures but with errors
+- Band 3: Attempts basic sentence forms but with limited success; errors are frequent
+
+PRONUNCIATION (assess clarity, intonation, stress patterns):
+- Band 9: Uses the full range of pronunciation features with precision; is effortless to understand throughout
+- Band 7: Shows all positive features of Band 6 and some of Band 8; generally easy to understand
+- Band 5: Shows all positive features of Band 4 and some of Band 6; may mispronounce some words
+- Band 3: Shows some features of Band 2 and some of Band 4; causes some strain for the listener
+
+IMPORTANT: 
+- A candidate with excellent vocabulary but poor grammar should show DIFFERENT scores for those criteria
+- A fluent speaker with poor pronunciation should score HIGH on fluency but LOWER on pronunciation
+- Score each criterion based ONLY on the evidence relevant to that skill
+- Use half-band scores (5.5, 6.5, 7.5) when performance falls between bands
+- Justify each score with specific examples from the audio
 
 Respond with JSON in this exact format:
 {

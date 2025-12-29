@@ -432,6 +432,10 @@ export default function AIPractice() {
       if (activeModule === 'writing') {
         navigate(`/ai-practice/writing/${generatedTest.id}`);
       } else if (activeModule === 'speaking') {
+        // Store voice preference in session for the speaking test
+        if (selectedVoice) {
+          sessionStorage.setItem('speaking_voice_preference', selectedVoice);
+        }
         navigate(`/ai-practice/speaking/${generatedTest.id}`);
       } else if (activeModule === 'reading') {
         navigate(`/ai-practice/reading/${generatedTest.id}`);
