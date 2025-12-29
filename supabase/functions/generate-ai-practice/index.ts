@@ -506,6 +506,15 @@ Style requirements:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Writing Task 1 image generation failed:', response.status, errorText);
+      
+      // Specific handling for billing/rate limit errors
+      if (response.status === 402) {
+        console.error('402 Payment Required: Lovable AI credits exhausted. Image generation skipped.');
+      } else if (response.status === 429) {
+        console.error('429 Rate Limited: Too many requests. Image generation skipped.');
+      }
+      
+      // Return null to continue without image (graceful degradation)
       return null;
     }
 

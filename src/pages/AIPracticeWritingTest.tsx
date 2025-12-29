@@ -1,10 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   loadGeneratedTest, 
   savePracticeResult, 
@@ -20,8 +18,14 @@ import { useTopicCompletions } from '@/hooks/useTopicCompletions';
 import { supabase } from '@/integrations/supabase/client';
 import { describeApiError } from '@/lib/apiErrors';
 import { AILoadingScreen } from '@/components/common/AILoadingScreen';
+import { TestStartOverlay } from '@/components/common/TestStartOverlay';
 import { WritingTestControls } from '@/components/writing/WritingTestControls';
-import { Clock, Send, PenTool, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { Clock, ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AIPracticeWritingTest() {
@@ -30,6 +34,7 @@ export default function AIPracticeWritingTest() {
   const { toast } = useToast();
   const { user } = useAuth();
   const { incrementCompletion } = useTopicCompletions('writing');
+  
   const [test, setTest] = useState<GeneratedTest | null>(null);
   const [submissionText1, setSubmissionText1] = useState('');
   const [submissionText2, setSubmissionText2] = useState('');
@@ -53,6 +58,10 @@ export default function AIPracticeWritingTest() {
 
   const wordCount1 = submissionText1.trim().split(/\s+/).filter(Boolean).length;
   const wordCount2 = submissionText2.trim().split(/\s+/).filter(Boolean).length;
+  
+  // Check if current part has content
+  const part1HasContent = wordCount1 > 0;
+  const part2HasContent = wordCount2 > 0;
 
   useEffect(() => {
     if (!testId) { navigate('/ai-practice'); return; }
@@ -90,11 +99,9 @@ export default function AIPracticeWritingTest() {
     const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
     try {
-      // Call evaluation function with correct parameter names matching edge function
       const { data, error } = await supabase.functions.invoke('evaluate-ai-practice-writing', {
         body: {
           submissionText: isFullTest ? undefined : submissionText1,
-          // Full test parameters
           isFullTest,
           task1Text: isFullTest ? submissionText1 : undefined,
           task2Text: isFullTest ? submissionText2 : undefined,
@@ -102,7 +109,6 @@ export default function AIPracticeWritingTest() {
           task2Instruction: isFullTest ? task2?.instruction : undefined,
           task1ImageBase64: isFullTest ? task1?.image_base64 : undefined,
           task1VisualType: isFullTest ? task1?.visual_type : undefined,
-          // Single task parameters
           taskType: isFullTest ? 'full_test' : task1?.task_type,
           instruction: isFullTest ? undefined : task1?.instruction,
           imageDescription: task1?.image_description,
@@ -134,7 +140,6 @@ export default function AIPracticeWritingTest() {
       if (user) {
         await savePracticeResultAsync(result, user.id, 'writing');
       }
-      // Track topic completion
       if (test?.topic) {
         incrementCompletion(test.topic);
       }
@@ -144,7 +149,6 @@ export default function AIPracticeWritingTest() {
       const errDesc = describeApiError(err);
       toast({ title: errDesc.title, description: errDesc.description, variant: 'destructive' });
       
-      // Save without AI evaluation
       const result: PracticeResult = {
         testId: test!.id,
         answers: isFullTest ? { 1: submissionText1, 2: submissionText2 } : { 1: submissionText1 },
@@ -169,7 +173,6 @@ export default function AIPracticeWritingTest() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle test start from overlay
   const handleStartTest = useCallback(() => {
     setShowStartOverlay(false);
     setTestStarted(true);
@@ -190,13 +193,18 @@ export default function AIPracticeWritingTest() {
     setTimeLeft(minutes * 60);
   };
 
+  // Get current task based on activeTask
+  const currentTask = activeTask === 'task1' ? task1 : task2;
+  const currentSubmission = activeTask === 'task1' ? submissionText1 : submissionText2;
+  const setCurrentSubmission = activeTask === 'task1' ? setSubmissionText1 : setSubmissionText2;
+  const currentWordCount = activeTask === 'task1' ? wordCount1 : wordCount2;
+
   if (isSubmitting) {
     return <AILoadingScreen title="Evaluating Your Writing" description="AI is analyzing your response..." progressSteps={['Reading submission', 'Analyzing content', 'Scoring criteria', 'Generating feedback']} currentStepIndex={0} />;
   }
 
   if (!test?.writingTask) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
 
-  // Show start overlay before test begins
   if (showStartOverlay) {
     const testTitle = isFullTest 
       ? 'AI Practice: Full Writing Test (Task 1 + Task 2)'
@@ -217,126 +225,60 @@ export default function AIPracticeWritingTest() {
     );
   }
 
-  // Format instruction text with IELTS-style formatting
-  const formatIELTSInstruction = (text: string, _taskType: 'task1' | 'task2') => {
-    // Split instruction into parts if it contains the word count requirement
-    const wordCountMatch = text.match(/Write at least (\d+) words\.?/i);
-    const mainInstruction = text.replace(/Write at least \d+ words\.?/i, '').trim();
+  // Render task content (left panel)
+  const renderTaskContent = (task: GeneratedWritingSingleTask | null) => {
+    if (!task) return null;
     
     return (
-      <div className="space-y-4">
-        {/* Main instruction with proper formatting */}
-        <div 
-          className="leading-relaxed text-foreground" 
-          style={{ fontSize }}
-          dangerouslySetInnerHTML={{ 
-            __html: mainInstruction
-              // Bold key instruction phrases
-              .replace(/(Summarise the information)/gi, '<strong>$1</strong>')
-              .replace(/(selecting and reporting the main features)/gi, '<strong>$1</strong>')
-              .replace(/(make comparisons where relevant)/gi, '<strong>$1</strong>')
-              .replace(/(To what extent do you agree or disagree)/gi, '<strong>$1</strong>')
-              .replace(/(Discuss both views and give your own opinion)/gi, '<strong>$1</strong>')
-              .replace(/(What are the causes|What solutions can you suggest)/gi, '<strong>$1</strong>')
-              .replace(/(What are the advantages and disadvantages)/gi, '<strong>$1</strong>')
-              .replace(/(Give reasons for your answer)/gi, '<strong>$1</strong>')
-              .replace(/(include any relevant examples)/gi, '<strong>$1</strong>')
-              // Add line breaks for better readability
-              .replace(/\.\s+/g, '.</p><p class="mt-2">')
-          }} 
-        />
-        
-        {/* Word count requirement - styled as official IELTS */}
-        {wordCountMatch && (
-          <p className="text-sm font-medium text-foreground border-t pt-3 mt-4">
-            Write at least <strong>{wordCountMatch[1]}</strong> words.
+      <div className="p-6 space-y-6">
+        {/* Part header - official IELTS style */}
+        <div className="bg-muted/50 p-4 -mx-6 -mt-6">
+          <h2 className="font-bold text-lg">Part {task.task_type === 'task1' ? '1' : '2'}</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            You should spend about {task.task_type === 'task1' ? '20' : '40'} minutes on this task. Write at least {task.word_limit_min} words.
           </p>
+        </div>
+
+        {/* Task instruction */}
+        <div className="space-y-4" style={{ fontSize }}>
+          <p className="leading-relaxed">{task.instruction}</p>
+        </div>
+
+        {/* Task 1: Show image (as in real IELTS) */}
+        {task.task_type === 'task1' && task.image_base64 && (
+          <div className="flex justify-center py-4">
+            <img 
+              src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
+              alt="Task visual" 
+              className="max-w-full max-h-[400px] object-contain border rounded"
+            />
+          </div>
+        )}
+        
+        {/* Task 1 without image - show placeholder message */}
+        {task.task_type === 'task1' && !task.image_base64 && (
+          <div className="flex items-center justify-center py-8 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <p className="text-muted-foreground text-sm">Image not available for this task</p>
+          </div>
         )}
       </div>
     );
   };
 
-  // Render single task UI with IELTS-style formatting
-  const renderSingleTask = (task: GeneratedWritingSingleTask, submission: string, setSubmission: (s: string) => void, wordCount: number) => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="overflow-hidden">
-        <CardContent className="p-6 space-y-4">
-          {/* Task header with official styling */}
-          <div className="border-b pb-3">
-            <h2 className="text-xl font-bold uppercase tracking-wide text-foreground">
-              WRITING {task.task_type === 'task1' ? 'TASK 1' : 'TASK 2'}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              You should spend about {task.task_type === 'task1' ? '20' : '40'} minutes on this task.
-            </p>
-          </div>
-          
-          {/* Task 1: Show image first if available (as in real IELTS) */}
-          {task.task_type === 'task1' && task.image_base64 && (
-            <div className="flex justify-center py-4 border rounded-lg bg-muted/20">
-              <img 
-                src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
-                alt="Task visual" 
-                className="max-w-full max-h-[350px] object-contain rounded"
-              />
-            </div>
-          )}
-          
-          {/* Instruction with IELTS formatting */}
-          {formatIELTSInstruction(task.instruction, task.task_type as 'task1' | 'task2')}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-6 flex flex-col h-full">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b">
-            <Badge variant="secondary" className="text-sm px-3 py-1">
-              Word Count: {wordCount}
-            </Badge>
-            {wordCount >= task.word_limit_min && (
-              <Badge variant="default" className="bg-success text-success-foreground">
-                ✓ Minimum {task.word_limit_min} words met
-              </Badge>
-            )}
-          </div>
-          <Textarea 
-            value={submission} 
-            onChange={(e) => setSubmission(e.target.value)} 
-            placeholder="Start writing your response here..." 
-            className="flex-1 min-h-[400px] resize-none font-serif leading-relaxed"
-            style={{ fontSize }}
-          />
-        </CardContent>
-      </Card>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="sticky top-0 z-50 bg-background border-b border-border px-4 py-3">
-        <div className="container max-w-6xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <PenTool className="w-5 h-5 text-primary" />
-            <div>
-              <h1 className="font-semibold text-sm md:text-base">
-                {isFullTest ? 'Full Writing Test' : (task1?.task_type === 'task1' ? 'Writing Task 1' : 'Writing Task 2')}
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                {isFullTest ? '400+ words total' : `${task1?.word_limit_min}+ words required`}
-              </p>
-            </div>
+      {/* Header - IELTS official style */}
+      <header className="sticky top-0 z-50 bg-background border-b border-border px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-destructive font-bold text-xl tracking-tight">IELTS</span>
+            <span className="text-sm text-muted-foreground">AI Practice</span>
           </div>
           <div className="flex items-center gap-3">
-            {isFullTest && (
-              <Badge variant="outline">
-                T1: {wordCount1} | T2: {wordCount2}
-              </Badge>
-            )}
-            <Badge variant="secondary">Words: {isFullTest ? wordCount1 + wordCount2 : wordCount1}</Badge>
             <button 
               onClick={() => setIsPaused(!isPaused)} 
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono font-bold",
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono font-bold text-sm",
                 isPaused ? "bg-warning/20 text-warning" : timeLeft < 300 ? "bg-destructive/10 text-destructive" : "bg-muted"
               )}
             >
@@ -353,61 +295,130 @@ export default function AIPracticeWritingTest() {
               setCustomTime={() => {}}
               onTimeChange={handleTimeChange}
             />
-            <Button onClick={handleSubmit} className="gap-2"><Send className="w-4 h-4" /><span className="hidden sm:inline">Submit</span></Button>
           </div>
         </div>
       </header>
 
-      <div className="flex-1 container max-w-6xl mx-auto px-4 py-6">
-        {isFullTest && task1 && task2 ? (
-          <div className="space-y-4">
-            <Tabs value={activeTask} onValueChange={(v) => setActiveTask(v as 'task1' | 'task2')}>
-              <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
-                <TabsTrigger value="task1" className="flex items-center gap-2">
-                  Task 1
-                  {wordCount1 >= (task1.word_limit_min || 150) && <Badge variant="secondary" className="bg-success text-success-foreground text-xs">✓</Badge>}
-                </TabsTrigger>
-                <TabsTrigger value="task2" className="flex items-center gap-2">
-                  Task 2
-                  {wordCount2 >= (task2.word_limit_min || 250) && <Badge variant="secondary" className="bg-success text-success-foreground text-xs">✓</Badge>}
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="task1" className="mt-4">
-                {renderSingleTask(task1, submissionText1, setSubmissionText1, wordCount1)}
-              </TabsContent>
-
-              <TabsContent value="task2" className="mt-4">
-                {renderSingleTask(task2, submissionText2, setSubmissionText2, wordCount2)}
-              </TabsContent>
-            </Tabs>
-
-            {/* Quick navigation */}
-            <div className="flex justify-center gap-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setActiveTask('task1')}
-                disabled={activeTask === 'task1'}
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Task 1
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setActiveTask('task2')}
-                disabled={activeTask === 'task2'}
-              >
-                Task 2
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+      {/* Main Content with Resizable Panels */}
+      <div className="flex-1 min-h-0">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          {/* Left Panel - Task Display */}
+          <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
+            <ScrollArea className="h-full">
+              {renderTaskContent(currentTask)}
+            </ScrollArea>
+          </ResizablePanel>
+          
+          {/* Resizable Handle */}
+          <ResizableHandle className="relative w-px bg-border cursor-col-resize select-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center border bg-background text-muted-foreground">
+              <span className="text-xs">↔</span>
             </div>
-          </div>
-        ) : task1 ? (
-          renderSingleTask(task1, submissionText1, setSubmissionText1, wordCount1)
-        ) : null}
+          </ResizableHandle>
+          
+          {/* Right Panel - Writing Input */}
+          <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
+            <div className="h-full flex flex-col p-4">
+              <Textarea 
+                value={currentSubmission} 
+                onChange={(e) => setCurrentSubmission(e.target.value)} 
+                placeholder="Start writing your response here..." 
+                className="flex-1 resize-none font-serif leading-relaxed border-2 border-primary/30 focus:border-primary"
+                style={{ fontSize }}
+              />
+              {/* Word count */}
+              <div className="flex justify-end mt-2">
+                <span className="text-sm text-muted-foreground">
+                  Words: <span className={cn("font-medium", currentWordCount >= (currentTask?.word_limit_min || 150) ? "text-success" : "text-foreground")}>{currentWordCount}</span>
+                </span>
+              </div>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
+
+      {/* Bottom Navigation Bar - IELTS official style */}
+      <footer className="sticky bottom-0 z-50 bg-background border-t border-border px-4 py-3">
+        <div className="flex items-center justify-between">
+          {/* Part tabs */}
+          <div className="flex items-center gap-4">
+            {isFullTest ? (
+              <>
+                <button
+                  onClick={() => setActiveTask('task1')}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors",
+                    activeTask === 'task1' 
+                      ? "bg-primary text-primary-foreground" 
+                      : part1HasContent 
+                        ? "bg-success/20 text-success border border-success/30"
+                        : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {part1HasContent && activeTask !== 'task1' && <Check className="w-3 h-3" />}
+                  Part 1
+                </button>
+                <button
+                  onClick={() => setActiveTask('task2')}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors",
+                    activeTask === 'task2' 
+                      ? "bg-primary text-primary-foreground" 
+                      : part2HasContent 
+                        ? "bg-success/20 text-success border border-success/30"
+                        : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {part2HasContent && activeTask !== 'task2' && <Check className="w-3 h-3" />}
+                  Part 2
+                </button>
+              </>
+            ) : (
+              <span className="text-sm font-medium">
+                Part {task1?.task_type === 'task1' ? '1' : '2'}
+              </span>
+            )}
+            
+            {/* Current question indicator */}
+            <span className="text-sm text-muted-foreground ml-4">
+              {activeTask === 'task1' ? '0' : '0'} of 1
+            </span>
+          </div>
+
+          {/* Navigation and Submit */}
+          <div className="flex items-center gap-2">
+            {isFullTest && (
+              <>
+                <Button 
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => setActiveTask('task1')}
+                  disabled={activeTask === 'task1'}
+                  className="bg-muted-foreground/80 hover:bg-muted-foreground text-background"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="secondary"
+                  size="icon"
+                  onClick={() => setActiveTask('task2')}
+                  disabled={activeTask === 'task2'}
+                  className="bg-foreground hover:bg-foreground/90 text-background"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            <Button 
+              onClick={handleSubmit} 
+              size="icon"
+              className="bg-foreground hover:bg-foreground/90 text-background ml-2"
+            >
+              <Check className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
