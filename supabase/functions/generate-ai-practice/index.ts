@@ -495,7 +495,7 @@ Style requirements:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image-preview',
+        model: 'google/gemini-2.5-flash-image',
         messages: [
           { role: 'user', content: imagePrompt }
         ],
@@ -2270,13 +2270,18 @@ Visual Type: ${visualTypeToUse}
 
 Create a realistic ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} with specific data that a student would describe.
 
+IMPORTANT: The instruction must follow official IELTS format exactly:
+- Start with a description of what the visual shows (e.g., "The bar chart below shows...")
+- Then include: "Summarise the information by selecting and reporting the main features, and make comparisons where relevant."
+- End with: "Write at least 150 words."
+
 Return ONLY valid JSON:
 {
   "task_type": "task1",
-  "instruction": "The ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} below shows... Summarise the information by selecting and reporting the main features, and make comparisons where relevant. Write at least 150 words.",
-  "visual_description": "Detailed description of what the visual shows including specific data points, trends, percentages etc.",
+  "instruction": "The ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} below shows [specific description of data]. Summarise the information by selecting and reporting the main features, and make comparisons where relevant. Write at least 150 words.",
+  "visual_description": "Detailed description of what the visual shows including specific data points, trends, percentages etc. for AI image generation.",
   "visual_type": "${visualTypeToUse}",
-  "data_description": "Description of the actual data to be shown in the image (e.g., 'The bar chart shows sales figures for 5 products: A-50%, B-30%, C-10%, D-5%, E-5%')"
+  "data_description": "Precise data to be shown in the image (e.g., 'The bar chart shows sales figures for 5 products: Product A - 50 units, Product B - 30 units, Product C - 20 units, Product D - 15 units, Product E - 10 units in 2024')"
 }`;
         } else {
           const essayTypeToUse = essayType === 'RANDOM'
@@ -2296,12 +2301,17 @@ Topic: ${topic}
 Difficulty: ${difficulty}
 Essay Type: ${essayTypeToUse}
 
-Create a thought-provoking essay question that ends with: "${essayFormatGuide[essayTypeToUse as keyof typeof essayFormatGuide] || ''}"
+IMPORTANT: The instruction must follow official IELTS format exactly:
+- Start with a statement or context about a topic
+- Present the main question/argument
+- End with the appropriate question format for ${essayTypeToUse}: "${essayFormatGuide[essayTypeToUse as keyof typeof essayFormatGuide] || ''}"
+- Include: "Give reasons for your answer and include any relevant examples from your own knowledge or experience."
+- End with: "Write at least 250 words."
 
 Return ONLY valid JSON:
 {
   "task_type": "task2",
-  "instruction": "The complete essay question ending with the appropriate question format. Write at least 250 words.",
+  "instruction": "[Context statement about the topic]. [Main argument or question]. ${essayFormatGuide[essayTypeToUse as keyof typeof essayFormatGuide] || ''} Give reasons for your answer and include any relevant examples from your own knowledge or experience. Write at least 250 words.",
   "essay_type": "${essayTypeToUse}"
 }`;
         }

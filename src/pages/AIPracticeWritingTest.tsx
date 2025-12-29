@@ -89,19 +89,24 @@ export default function AIPracticeWritingTest() {
     const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
     try {
-      // Call evaluation function
+      // Call evaluation function with correct parameter names matching edge function
       const { data, error } = await supabase.functions.invoke('evaluate-ai-practice-writing', {
         body: {
           submissionText: isFullTest ? undefined : submissionText1,
-          submissionText1: isFullTest ? submissionText1 : undefined,
-          submissionText2: isFullTest ? submissionText2 : undefined,
+          // Full test parameters
           isFullTest,
+          task1Text: isFullTest ? submissionText1 : undefined,
+          task2Text: isFullTest ? submissionText2 : undefined,
+          task1Instruction: isFullTest ? task1?.instruction : undefined,
+          task2Instruction: isFullTest ? task2?.instruction : undefined,
+          task1ImageBase64: isFullTest ? task1?.image_base64 : undefined,
+          task1VisualType: isFullTest ? task1?.visual_type : undefined,
+          // Single task parameters
           taskType: isFullTest ? 'full_test' : task1?.task_type,
           instruction: isFullTest ? undefined : task1?.instruction,
-          instruction1: isFullTest ? task1?.instruction : undefined,
-          instruction2: isFullTest ? task2?.instruction : undefined,
-          imageDescription: isFullTest ? task1?.image_description : task1?.image_description,
-          imageBase64: isFullTest ? task1?.image_base64 : task1?.image_base64,
+          imageDescription: task1?.image_description,
+          imageBase64: isFullTest ? undefined : task1?.image_base64,
+          visualType: isFullTest ? undefined : task1?.visual_type,
         },
       });
 
@@ -205,33 +210,93 @@ export default function AIPracticeWritingTest() {
     );
   }
 
-  // Render single task UI
+  // Format instruction text with IELTS-style formatting
+  const formatIELTSInstruction = (text: string, _taskType: 'task1' | 'task2') => {
+    // Split instruction into parts if it contains the word count requirement
+    const wordCountMatch = text.match(/Write at least (\d+) words\.?/i);
+    const mainInstruction = text.replace(/Write at least \d+ words\.?/i, '').trim();
+    
+    return (
+      <div className="space-y-4">
+        {/* Main instruction with proper formatting */}
+        <div 
+          className="leading-relaxed text-foreground" 
+          style={{ fontSize }}
+          dangerouslySetInnerHTML={{ 
+            __html: mainInstruction
+              // Bold key instruction phrases
+              .replace(/(Summarise the information)/gi, '<strong>$1</strong>')
+              .replace(/(selecting and reporting the main features)/gi, '<strong>$1</strong>')
+              .replace(/(make comparisons where relevant)/gi, '<strong>$1</strong>')
+              .replace(/(To what extent do you agree or disagree)/gi, '<strong>$1</strong>')
+              .replace(/(Discuss both views and give your own opinion)/gi, '<strong>$1</strong>')
+              .replace(/(What are the causes|What solutions can you suggest)/gi, '<strong>$1</strong>')
+              .replace(/(What are the advantages and disadvantages)/gi, '<strong>$1</strong>')
+              .replace(/(Give reasons for your answer)/gi, '<strong>$1</strong>')
+              .replace(/(include any relevant examples)/gi, '<strong>$1</strong>')
+              // Add line breaks for better readability
+              .replace(/\.\s+/g, '.</p><p class="mt-2">')
+          }} 
+        />
+        
+        {/* Word count requirement - styled as official IELTS */}
+        {wordCountMatch && (
+          <p className="text-sm font-medium text-foreground border-t pt-3 mt-4">
+            Write at least <strong>{wordCountMatch[1]}</strong> words.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Render single task UI with IELTS-style formatting
   const renderSingleTask = (task: GeneratedWritingSingleTask, submission: string, setSubmission: (s: string) => void, wordCount: number) => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card>
+      <Card className="overflow-hidden">
         <CardContent className="p-6 space-y-4">
-          <h2 className="text-lg font-bold">{task.task_type === 'task1' ? 'Writing Task 1' : 'Writing Task 2'}</h2>
-          <p className="text-sm leading-relaxed" style={{ fontSize }}>{task.instruction}</p>
-          {task.image_base64 && (
-            <div className="flex justify-center py-4">
-              <img src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} alt="Task visual" className="max-w-full rounded-lg border" />
+          {/* Task header with official styling */}
+          <div className="border-b pb-3">
+            <h2 className="text-xl font-bold uppercase tracking-wide text-foreground">
+              WRITING {task.task_type === 'task1' ? 'TASK 1' : 'TASK 2'}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              You should spend about {task.task_type === 'task1' ? '20' : '40'} minutes on this task.
+            </p>
+          </div>
+          
+          {/* Task 1: Show image first if available (as in real IELTS) */}
+          {task.task_type === 'task1' && task.image_base64 && (
+            <div className="flex justify-center py-4 border rounded-lg bg-muted/20">
+              <img 
+                src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
+                alt="Task visual" 
+                className="max-w-full max-h-[350px] object-contain rounded"
+              />
             </div>
           )}
-          <p className="text-sm text-muted-foreground">Write at least {task.word_limit_min} words.</p>
+          
+          {/* Instruction with IELTS formatting */}
+          {formatIELTSInstruction(task.instruction, task.task_type as 'task1' | 'task2')}
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="p-6 flex flex-col h-full">
-          <div className="flex items-center justify-between mb-2">
-            <Badge variant="secondary">Words: {wordCount}</Badge>
-            {wordCount >= task.word_limit_min && <Badge variant="default" className="bg-success">Minimum met!</Badge>}
+          <div className="flex items-center justify-between mb-3 pb-2 border-b">
+            <Badge variant="secondary" className="text-sm px-3 py-1">
+              Word Count: {wordCount}
+            </Badge>
+            {wordCount >= task.word_limit_min && (
+              <Badge variant="default" className="bg-success text-success-foreground">
+                ✓ Minimum {task.word_limit_min} words met
+              </Badge>
+            )}
           </div>
           <Textarea 
             value={submission} 
             onChange={(e) => setSubmission(e.target.value)} 
             placeholder="Start writing your response here..." 
-            className="flex-1 min-h-[400px] resize-none"
+            className="flex-1 min-h-[400px] resize-none font-serif leading-relaxed"
             style={{ fontSize }}
           />
         </CardContent>

@@ -448,7 +448,7 @@ export default function AIPractice() {
         questionType: currentQuestionType,
         difficulty,
         topic: data.topic || topicPreference || 'Random Topic',
-        timeMinutes,
+        timeMinutes: finalTimeMinutes,
         passage: data.passage,
         audioBase64: data.audioBase64,
         audioFormat: data.audioFormat,
@@ -1330,55 +1330,57 @@ export default function AIPractice() {
                 </div>
               </div>
 
-              {/* Topic Preference with Dropdown */}
-              <div className="space-y-3">
-                <Label className="text-base font-medium">
-                  Topic Preference
-                </Label>
-                <div className="flex flex-col gap-3 max-w-md">
-                  <Select
-                    value={topicSelectValue}
-                    onValueChange={(v) => {
-                      if (v === '__random__') {
-                        setTopicPreference('');
-                        return;
-                      }
-                      if (v === '__custom__') {
-                        // Keep current custom text
-                        return;
-                      }
-                      setTopicPreference(v);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a topic" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__random__">Random (recommended)</SelectItem>
-                      <SelectItem value="__custom__">Custom (type below)</SelectItem>
-                      {currentTopics.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {currentCompletions.getTopicLabel(t)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              {/* Topic Preference with Dropdown - Hidden for Writing (has visual/essay type selectors) */}
+              {activeModule !== 'writing' && (
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">
+                    Topic Preference
+                  </Label>
+                  <div className="flex flex-col gap-3 max-w-md">
+                    <Select
+                      value={topicSelectValue}
+                      onValueChange={(v) => {
+                        if (v === '__random__') {
+                          setTopicPreference('');
+                          return;
+                        }
+                        if (v === '__custom__') {
+                          // Keep current custom text
+                          return;
+                        }
+                        setTopicPreference(v);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a topic" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__random__">Random (recommended)</SelectItem>
+                        <SelectItem value="__custom__">Custom (type below)</SelectItem>
+                        {currentTopics.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {currentCompletions.getTopicLabel(t)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-                  <Input
-                    id="topic"
-                    value={topicPreference}
-                    onChange={(e) => setTopicPreference(e.target.value.slice(0, 100))}
-                    placeholder="Or type your own topic (optional)"
-                    maxLength={100}
-                  />
+                    <Input
+                      id="topic"
+                      value={topicPreference}
+                      onChange={(e) => setTopicPreference(e.target.value.slice(0, 100))}
+                      placeholder="Or type your own topic (optional)"
+                      maxLength={100}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Select a common IELTS topic or type your own. Leave empty for random.
+                  </p>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Select a common IELTS topic or type your own. Leave empty for random.
-                </p>
-              </div>
+              )}
 
-              {/* Time Setting - Hidden for Listening (audio length determines time) */}
-              {activeModule !== 'listening' && (
+              {/* Time Setting - Hidden for Listening (audio length determines time) and Writing (has its own time config) */}
+              {activeModule !== 'listening' && activeModule !== 'writing' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label className="text-base font-medium flex items-center gap-2">
