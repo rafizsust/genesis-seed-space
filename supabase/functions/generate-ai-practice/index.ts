@@ -339,7 +339,192 @@ Style requirements:
   }
 }
 
-// Upload base64 image to Supabase storage and return public URL
+// Generate chart/graph image for Writing Task 1 using Gemini (via Lovable AI Gateway)
+async function generateWritingTask1Image(
+  visualType: string,
+  visualDescription: string,
+  dataDescription: string
+): Promise<string | null> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.error('LOVABLE_API_KEY not configured');
+    return null;
+  }
+
+  try {
+    console.log(`Generating ${visualType} image for Writing Task 1...`);
+    
+    // Build a detailed prompt based on visual type
+    let imagePrompt = '';
+    
+    switch (visualType?.toUpperCase()) {
+      case 'BAR_CHART':
+        imagePrompt = `Create a professional bar chart for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear vertical or horizontal bars with distinct colors
+- Properly labeled X and Y axes with units
+- A clear title at the top
+- Legend if comparing multiple categories
+- Professional, clean style suitable for an academic test
+- Include realistic data values on the axes
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'LINE_GRAPH':
+        imagePrompt = `Create a professional line graph for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear trend lines with different colors/styles for each data series
+- Properly labeled X axis (usually time periods) and Y axis with units
+- A clear title at the top
+- Legend showing what each line represents
+- Data points marked on the lines
+- Professional, clean style suitable for an academic test
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'PIE_CHART':
+        imagePrompt = `Create a professional pie chart for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear segments with distinct colors
+- Percentage labels on or next to each segment
+- A clear title at the top
+- Legend showing what each color represents
+- Professional, clean style suitable for an academic test
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'TABLE':
+        imagePrompt = `Create a professional data table for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear rows and columns with headers
+- Alternating row colors for readability
+- A clear title at the top
+- Units specified in column headers
+- Professional, clean style suitable for an academic test
+- Easy to read text
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'MIXED_CHARTS':
+        imagePrompt = `Create a professional combination of two charts for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Two charts side by side (e.g., a pie chart and a bar chart, or a line graph and a bar chart)
+- Each chart has clear labels and a subtitle
+- Overall title at the top
+- Professional, clean style suitable for an academic test
+- Distinct colors that work well together
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'PROCESS_DIAGRAM':
+        imagePrompt = `Create a professional process diagram for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear steps connected by arrows showing the process flow
+- Each step in a box or shape with descriptive text
+- Arrows showing direction of flow
+- A clear title at the top
+- Professional, clean style suitable for an academic test
+- Logical layout (left to right or top to bottom)
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'MAP':
+        imagePrompt = `Create a professional map comparison for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Two maps side by side showing 'before' and 'after' or comparison of two time periods
+- Clear labels for key features
+- Legend explaining symbols
+- Compass direction indicator
+- A clear title at the top
+- Professional, clean style suitable for an academic test
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      case 'COMPARISON_DIAGRAM':
+        imagePrompt = `Create a professional comparison diagram for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear visual comparison of two items/processes
+- Labels and annotations
+- A clear title at the top
+- Professional, clean style suitable for an academic test
+- Ultra high resolution, crisp graphics`;
+        break;
+        
+      default:
+        // Generic visual
+        imagePrompt = `Create a professional chart or graph for an IELTS Academic Writing Task 1.
+${visualDescription}
+${dataDescription}
+
+Style requirements:
+- Clear, professional appearance
+- Properly labeled with units and legend
+- A clear title at the top
+- Suitable for an academic test
+- Ultra high resolution, crisp graphics`;
+    }
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash-image-preview',
+        messages: [
+          { role: 'user', content: imagePrompt }
+        ],
+        modalities: ['image', 'text'],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Writing Task 1 image generation failed:', response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    
+    if (imageData && imageData.startsWith('data:image/')) {
+      console.log('Writing Task 1 image generated successfully');
+      return imageData;
+    }
+    
+    console.error('No image data in response');
+    return null;
+  } catch (err) {
+    console.error('Writing Task 1 image generation error:', err);
+    return null;
+  }
+}
+
 async function uploadGeneratedImage(
   supabaseClient: any, 
   imageDataUrl: string, 
@@ -1651,7 +1836,8 @@ serve(async (req) => {
     const geminiApiKey = await decryptApiKey(secretData.encrypted_value, appEncryptionKey);
 
     // Parse request
-    const { module, questionType, difficulty, topicPreference, questionCount, timeMinutes, readingConfig, listeningConfig } = await req.json();
+    const body = await req.json();
+    const { module, questionType, difficulty, topicPreference, questionCount, timeMinutes, readingConfig, listeningConfig, writingConfig } = body;
     
     const topic = topicPreference || IELTS_TOPICS[Math.floor(Math.random() * IELTS_TOPICS.length)];
     const testId = crypto.randomUUID();
@@ -2049,47 +2235,160 @@ serve(async (req) => {
       });
 
     } else if (module === 'writing') {
-      // Writing test generation (unchanged)
-      const isTask1 = questionType === 'TASK_1';
+      // Extract writing configuration
+      const writingConfig = body.writingConfig || {};
+      const taskType = writingConfig.taskType || questionType;
+      const task1VisualType = writingConfig.task1VisualType || 'RANDOM';
+      const task2EssayType = writingConfig.task2EssayType || 'RANDOM';
       
-      const writingPrompt = isTask1 
-        ? `Generate an IELTS Academic Writing Task 1:\nTopic: ${topic}\nDifficulty: ${difficulty}\n\nReturn ONLY valid JSON:\n{\n  "task_type": "task1",\n  "instruction": "The chart/graph below shows...",\n  "visual_description": "Description for image generation",\n  "visual_type": "bar chart"\n}`
-        : `Generate an IELTS Academic Writing Task 2:\nTopic: ${topic}\nDifficulty: ${difficulty}\n\nReturn ONLY valid JSON:\n{\n  "task_type": "task2",\n  "instruction": "The essay question..."\n}`;
+      const isFullTest = taskType === 'FULL_TEST';
+      const includeTask1 = isFullTest || taskType === 'TASK_1';
+      const includeTask2 = isFullTest || taskType === 'TASK_2';
+      
+      console.log(`Generating writing test: taskType=${taskType}, visual=${task1VisualType}, essay=${task2EssayType}`);
 
-      const result = await callGemini(geminiApiKey, writingPrompt);
-      if (!result) {
-        return new Response(JSON.stringify({ error: 'Failed to generate writing test' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      // Helper function to generate a single task
+      async function generateSingleWritingTask(
+        taskNum: 1 | 2,
+        visualType: string,
+        essayType: string
+      ): Promise<any> {
+        const isTask1 = taskNum === 1;
+        
+        // Build prompt based on task type
+        let writingPrompt: string;
+        
+        if (isTask1) {
+          const visualTypeToUse = visualType === 'RANDOM' 
+            ? ['BAR_CHART', 'LINE_GRAPH', 'PIE_CHART', 'TABLE', 'PROCESS_DIAGRAM'][Math.floor(Math.random() * 5)]
+            : visualType;
+            
+          writingPrompt = `Generate an IELTS Academic Writing Task 1.
+Topic: ${topic}
+Difficulty: ${difficulty}
+Visual Type: ${visualTypeToUse}
+
+Create a realistic ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} with specific data that a student would describe.
+
+Return ONLY valid JSON:
+{
+  "task_type": "task1",
+  "instruction": "The ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} below shows... Summarise the information by selecting and reporting the main features, and make comparisons where relevant. Write at least 150 words.",
+  "visual_description": "Detailed description of what the visual shows including specific data points, trends, percentages etc.",
+  "visual_type": "${visualTypeToUse}",
+  "data_description": "Description of the actual data to be shown in the image (e.g., 'The bar chart shows sales figures for 5 products: A-50%, B-30%, C-10%, D-5%, E-5%')"
+}`;
+        } else {
+          const essayTypeToUse = essayType === 'RANDOM'
+            ? ['OPINION', 'DISCUSSION', 'PROBLEM_SOLUTION', 'ADVANTAGES_DISADVANTAGES', 'TWO_PART_QUESTION'][Math.floor(Math.random() * 5)]
+            : essayType;
+            
+          const essayFormatGuide = {
+            'OPINION': 'To what extent do you agree or disagree?',
+            'DISCUSSION': 'Discuss both views and give your own opinion.',
+            'PROBLEM_SOLUTION': 'What are the causes of this problem and what solutions can you suggest?',
+            'ADVANTAGES_DISADVANTAGES': 'What are the advantages and disadvantages of this?',
+            'TWO_PART_QUESTION': 'Include two related questions that the student must address.'
+          };
+          
+          writingPrompt = `Generate an IELTS Academic Writing Task 2.
+Topic: ${topic}
+Difficulty: ${difficulty}
+Essay Type: ${essayTypeToUse}
+
+Create a thought-provoking essay question that ends with: "${essayFormatGuide[essayTypeToUse as keyof typeof essayFormatGuide] || ''}"
+
+Return ONLY valid JSON:
+{
+  "task_type": "task2",
+  "instruction": "The complete essay question ending with the appropriate question format. Write at least 250 words.",
+  "essay_type": "${essayTypeToUse}"
+}`;
+        }
+
+        const result = await callGemini(geminiApiKey, writingPrompt);
+        if (!result) {
+          throw new Error(`Failed to generate Task ${taskNum}`);
+        }
+
+        try {
+          const jsonStr = extractJsonFromResponse(result);
+          const parsed = JSON.parse(jsonStr);
+          
+          // For Task 1, generate the actual image
+          let imageBase64: string | null = null;
+          if (isTask1 && parsed.visual_description) {
+            console.log(`Generating image for Task 1: ${parsed.visual_type}`);
+            imageBase64 = await generateWritingTask1Image(
+              parsed.visual_type || visualType,
+              parsed.visual_description,
+              parsed.data_description || ''
+            );
+          }
+          
+          return {
+            id: crypto.randomUUID(),
+            task_type: isTask1 ? 'task1' : 'task2',
+            instruction: parsed.instruction,
+            image_description: parsed.visual_description,
+            image_base64: imageBase64,
+            visual_type: parsed.visual_type,
+            essay_type: parsed.essay_type,
+            word_limit_min: isTask1 ? 150 : 250,
+            word_limit_max: isTask1 ? 200 : 350,
+          };
+        } catch (e) {
+          console.error(`Failed to parse Task ${taskNum} response:`, e, result?.substring(0, 500));
+          throw new Error(`Failed to parse Task ${taskNum} content`);
+        }
       }
 
-      let parsed;
       try {
-        const jsonStr = extractJsonFromResponse(result);
-        parsed = JSON.parse(jsonStr);
-      } catch (e) {
-        console.error("Failed to parse Gemini response:", e, result?.substring(0, 500));
-        return new Response(JSON.stringify({ error: 'Failed to parse generated content. Please try again.' }), {
+        if (isFullTest) {
+          // Generate both tasks
+          console.log('Generating full writing test with both tasks...');
+          const [task1Result, task2Result] = await Promise.all([
+            generateSingleWritingTask(1, task1VisualType, task2EssayType),
+            generateSingleWritingTask(2, task1VisualType, task2EssayType),
+          ]);
+          
+          return new Response(JSON.stringify({
+            testId,
+            topic,
+            timeMinutes,
+            writingTask: {
+              id: crypto.randomUUID(),
+              test_type: 'full_test',
+              task1: task1Result,
+              task2: task2Result,
+              time_minutes: timeMinutes,
+            },
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        } else {
+          // Generate single task
+          const taskResult = await generateSingleWritingTask(
+            includeTask1 ? 1 : 2,
+            task1VisualType,
+            task2EssayType
+          );
+          
+          return new Response(JSON.stringify({
+            testId,
+            topic,
+            writingTask: taskResult,
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (err: any) {
+        console.error('Writing generation error:', err);
+        return new Response(JSON.stringify({ error: err.message || 'Failed to generate writing test' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-
-      return new Response(JSON.stringify({
-        testId,
-        topic,
-        writingTask: {
-          id: crypto.randomUUID(),
-          task_type: isTask1 ? 'task1' : 'task2',
-          instruction: parsed.instruction,
-          image_description: parsed.visual_description,
-          word_limit_min: isTask1 ? 150 : 250,
-          word_limit_max: isTask1 ? 200 : 350,
-        },
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
 
     } else if (module === 'speaking') {
       // Speaking test generation with official IELTS examiner phrases

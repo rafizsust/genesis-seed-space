@@ -83,9 +83,33 @@ const LISTENING_QUESTION_TYPES: { value: ListeningQuestionType; label: string; d
   { value: 'MAP_LABELING', label: 'Map Labeling', description: 'Label locations on a map' },
 ];
 
-const WRITING_TASK_TYPES: { value: WritingTaskType; label: string; description: string }[] = [
-  { value: 'TASK_1', label: 'Task 1 (Report)', description: 'Describe visual data (chart, graph, diagram)' },
-  { value: 'TASK_2', label: 'Task 2 (Essay)', description: 'Write an essay on a given topic' },
+const WRITING_TASK_TYPES: { value: WritingTaskType; label: string; description: string; defaultTime: number }[] = [
+  { value: 'FULL_TEST', label: 'Full Test', description: 'Task 1 + Task 2 together (60 min)', defaultTime: 60 },
+  { value: 'TASK_1', label: 'Task 1 (Report)', description: 'Describe visual data (chart, graph, diagram)', defaultTime: 20 },
+  { value: 'TASK_2', label: 'Task 2 (Essay)', description: 'Write an essay on a given topic', defaultTime: 40 },
+];
+
+// Task 1 visual types for dropdown
+const WRITING_TASK1_VISUAL_TYPES = [
+  { value: 'RANDOM', label: 'Random', description: 'Any visual type' },
+  { value: 'BAR_CHART', label: 'Bar Chart', description: 'Vertical or horizontal bars' },
+  { value: 'LINE_GRAPH', label: 'Line Graph', description: 'Trends over time' },
+  { value: 'PIE_CHART', label: 'Pie Chart', description: 'Proportions and percentages' },
+  { value: 'TABLE', label: 'Table', description: 'Data in rows and columns' },
+  { value: 'MIXED_CHARTS', label: 'Mixed Charts', description: 'Two or more chart types' },
+  { value: 'PROCESS_DIAGRAM', label: 'Process Diagram', description: 'Steps in a process' },
+  { value: 'MAP', label: 'Map Comparison', description: 'Before and after maps' },
+  { value: 'COMPARISON_DIAGRAM', label: 'Comparison Diagram', description: 'Comparing two items' },
+];
+
+// Task 2 essay types for dropdown  
+const WRITING_TASK2_ESSAY_TYPES = [
+  { value: 'RANDOM', label: 'Random', description: 'Any essay type' },
+  { value: 'OPINION', label: 'Opinion/Agree-Disagree', description: 'Express your opinion' },
+  { value: 'DISCUSSION', label: 'Discussion', description: 'Discuss both views' },
+  { value: 'PROBLEM_SOLUTION', label: 'Problem & Solution', description: 'Problems and solutions' },
+  { value: 'ADVANTAGES_DISADVANTAGES', label: 'Advantages & Disadvantages', description: 'Pros and cons' },
+  { value: 'TWO_PART_QUESTION', label: 'Two-Part Question', description: 'Answer two related questions' },
 ];
 
 const SPEAKING_PART_TYPES: { value: SpeakingPartType; label: string; description: string }[] = [
@@ -172,11 +196,22 @@ export default function AIPractice() {
   const [readingQuestionType, setReadingQuestionType] = useState<ReadingQuestionType>('TRUE_FALSE_NOT_GIVEN');
   const [listeningQuestionType, setListeningQuestionType] = useState<ListeningQuestionType>('FILL_IN_BLANK');
   const [writingTaskType, setWritingTaskType] = useState<WritingTaskType>('TASK_1');
+  const [writingTask1VisualType, setWritingTask1VisualType] = useState('RANDOM');
+  const [writingTask2EssayType, setWritingTask2EssayType] = useState('RANDOM');
+  const [writingTimeMinutes, setWritingTimeMinutes] = useState(20);
   const [speakingPartType, setSpeakingPartType] = useState<SpeakingPartType>('FULL_TEST');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('medium');
   const [topicPreference, setTopicPreference] = useState('');
   const [timeMinutes, setTimeMinutes] = useState(10);
   const [audioSpeed, setAudioSpeed] = useState(1);
+
+  // Update writing time when task type changes
+  useEffect(() => {
+    const taskConfig = WRITING_TASK_TYPES.find(t => t.value === writingTaskType);
+    if (taskConfig) {
+      setWritingTimeMinutes(taskConfig.defaultTime);
+    }
+  }, [writingTaskType]);
 
   // Topic completion tracking
   const readingCompletions = useTopicCompletions('reading');
@@ -369,6 +404,17 @@ export default function AIPractice() {
         monologueMode: listeningQuestionType === 'FILL_IN_BLANK' && monologueModeEnabled,
       } : undefined;
 
+      // Build writing-specific configuration
+      const writingConfig = activeModule === 'writing' ? {
+        taskType: writingTaskType,
+        task1VisualType: writingTask1VisualType,
+        task2EssayType: writingTask2EssayType,
+        timeMinutes: writingTimeMinutes,
+      } : undefined;
+
+      // Use writing time for writing module
+      const finalTimeMinutes = activeModule === 'writing' ? writingTimeMinutes : timeMinutes;
+
       const { data, error } = await supabase.functions.invoke('generate-ai-practice', {
         body: {
           module: activeModule,
@@ -376,9 +422,10 @@ export default function AIPractice() {
           difficulty,
           topicPreference: topicPreference.trim() || undefined,
           questionCount,
-          timeMinutes,
+          timeMinutes: finalTimeMinutes,
           readingConfig,
           listeningConfig,
+          writingConfig,
         },
       });
 
@@ -1045,9 +1092,10 @@ export default function AIPractice() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* Task Type Selection */}
                   <div className="space-y-3">
                     <Label className="text-base font-medium">Task Type</Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {WRITING_TASK_TYPES.map((type) => (
                         <button
                           key={type.value}
@@ -1061,11 +1109,89 @@ export default function AIPractice() {
                           <div className="font-medium">{type.label}</div>
                           <div className="text-sm text-muted-foreground">{type.description}</div>
                           <Badge variant="secondary" className="mt-2">
-                            {type.value === 'TASK_1' ? '150+ words' : '250+ words'}
+                            {type.value === 'FULL_TEST' ? '400+ words' : type.value === 'TASK_1' ? '150+ words' : '250+ words'}
                           </Badge>
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Question Type Dropdowns */}
+                  <div className="space-y-4 border-t pt-6">
+                    <Label className="text-base font-medium">Question Type</Label>
+                    
+                    {/* Task 1 Visual Type (for Full Test or Task 1) */}
+                    {(writingTaskType === 'FULL_TEST' || writingTaskType === 'TASK_1') && (
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {writingTaskType === 'FULL_TEST' ? 'Task 1 Visual Type' : 'Visual Type'}
+                        </Label>
+                        <Select value={writingTask1VisualType} onValueChange={setWritingTask1VisualType}>
+                          <SelectTrigger className="max-w-md">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {WRITING_TASK1_VISUAL_TYPES.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                <div className="flex flex-col">
+                                  <span>{type.label}</span>
+                                  <span className="text-xs text-muted-foreground">{type.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* Task 2 Essay Type (for Full Test or Task 2) */}
+                    {(writingTaskType === 'FULL_TEST' || writingTaskType === 'TASK_2') && (
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {writingTaskType === 'FULL_TEST' ? 'Task 2 Essay Type' : 'Essay Type'}
+                        </Label>
+                        <Select value={writingTask2EssayType} onValueChange={setWritingTask2EssayType}>
+                          <SelectTrigger className="max-w-md">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {WRITING_TASK2_ESSAY_TYPES.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                <div className="flex flex-col">
+                                  <span>{type.label}</span>
+                                  <span className="text-xs text-muted-foreground">{type.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Time Configuration */}
+                  <div className="space-y-4 border-t pt-6">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-medium">Test Duration</Label>
+                      <Badge variant="outline" className="text-lg font-mono">
+                        {writingTimeMinutes} min
+                      </Badge>
+                    </div>
+                    <Slider
+                      value={[writingTimeMinutes]}
+                      onValueChange={([val]) => setWritingTimeMinutes(val)}
+                      min={writingTaskType === 'FULL_TEST' ? 10 : 10}
+                      max={writingTaskType === 'FULL_TEST' ? 90 : writingTaskType === 'TASK_1' ? 30 : 60}
+                      step={5}
+                      className="max-w-md"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      {writingTaskType === 'FULL_TEST' 
+                        ? 'Official time: 60 minutes for both tasks' 
+                        : writingTaskType === 'TASK_1'
+                        ? 'Official time: 20 minutes'
+                        : 'Official time: 40 minutes'}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
