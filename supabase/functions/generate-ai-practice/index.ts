@@ -354,25 +354,63 @@ function extractJsonFromResponse(text: string): string {
   throw new Error('Could not extract valid JSON from AI response');
 }
 
-// Generate map image using Gemini via direct API (uses user's Gemini API key)
-async function generateMapImage(
-  mapDescription: string, 
-  mapLabels: Array<{id: string; text: string}>,
-  landmarks?: Array<{id: string; text: string}>,
-  geminiApiKey?: string
-): Promise<string | null> {
-  if (!geminiApiKey) {
-    console.error('Gemini API key not provided for map generation');
+// Generate image using Lovable AI Gateway (no user API key needed)
+async function generateImageWithLovableGateway(prompt: string): Promise<string | null> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    console.error('LOVABLE_API_KEY not configured for image generation');
     return null;
   }
 
   try {
-    console.log('Generating map image with Gemini image model...');
+    console.log('Generating image with Lovable AI Gateway...');
 
-    const answerPositions = mapLabels.map(l => l.id).join(', ');
-    const landmarksList = landmarks?.map(l => `${l.text}`).join(', ') || 'streets and pathways';
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        messages: [{ role: "user", content: prompt }],
+        modalities: ["image", "text"],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Lovable AI Gateway image generation failed:', response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
     
-    const imagePrompt = `Create a simple, clean map diagram for an IELTS listening test.
+    if (imageUrl) {
+      console.log('Image generated successfully via Lovable AI Gateway');
+      return imageUrl;
+    }
+    
+    console.error('No image data in Lovable AI Gateway response');
+    return null;
+  } catch (err) {
+    console.error('Lovable AI Gateway image generation error:', err);
+    return null;
+  }
+}
+
+// Generate map image using Lovable AI Gateway
+async function generateMapImage(
+  mapDescription: string, 
+  mapLabels: Array<{id: string; text: string}>,
+  landmarks?: Array<{id: string; text: string}>,
+  _geminiApiKey?: string // Kept for backward compatibility, but not used
+): Promise<string | null> {
+  const answerPositions = mapLabels.map(l => l.id).join(', ');
+  const landmarksList = landmarks?.map(l => `${l.text}`).join(', ') || 'streets and pathways';
+  
+  const imagePrompt = `Create a simple, clean map diagram for an IELTS listening test.
 The map shows: ${mapDescription}
 
 CRITICAL INSTRUCTIONS:
@@ -384,65 +422,26 @@ CRITICAL INSTRUCTIONS:
 - Make it look professional with clear pathways, streets, and building outlines
 - The reference landmarks should have their names visible on the map`;
 
-    // Use the latest stable image generation model
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${geminiApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: imagePrompt }] }],
-          generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Map image generation failed:', response.status, errorText);
-      return null;
-    }
-
-    const data = await response.json();
-    const imagePart = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-    
-    if (imagePart?.inlineData?.data) {
-      console.log('Map image generated successfully');
-      return `data:image/${imagePart.inlineData.mimeType?.split('/')[1] || 'png'};base64,${imagePart.inlineData.data}`;
-    }
-    
-    console.error('No image data in response');
-    return null;
-  } catch (err) {
-    console.error('Map image generation error:', err);
-    return null;
-  }
+  console.log('Generating map image for IELTS test...');
+  return await generateImageWithLovableGateway(imagePrompt);
 }
 
-// Generate flowchart image using Gemini (via Lovable AI Gateway)
+// Generate flowchart image using Lovable AI Gateway
 async function generateFlowchartImage(
   title: string, 
   steps: Array<{label?: string; text?: string; isBlank?: boolean; questionNumber?: number}>,
-  geminiApiKey: string
+  _geminiApiKey?: string // Kept for backward compatibility, but not used
 ): Promise<string | null> {
-  if (!geminiApiKey) {
-    console.error('Gemini API key not provided for flowchart image generation');
-    return null;
-  }
-
-  try {
-    console.log('Generating flowchart image with Gemini image model...');
-    
-    // Build step descriptions for the prompt
-    const stepDescriptions = steps.map((step, idx) => {
-      const stepText = step.label || step.text || '';
-      if (step.isBlank) {
-        return `Step ${idx + 1}: [BLANK ${step.questionNumber || idx + 1}] (empty box for answer)`;
-      }
-      return `Step ${idx + 1}: ${stepText}`;
-    }).join('\n');
-    
-    const imagePrompt = `Create a clean, professional flowchart diagram for an IELTS listening test.
+  // Build step descriptions for the prompt
+  const stepDescriptions = steps.map((step, idx) => {
+    const stepText = step.label || step.text || '';
+    if (step.isBlank) {
+      return `Step ${idx + 1}: [BLANK ${step.questionNumber || idx + 1}] (empty box for answer)`;
+    }
+    return `Step ${idx + 1}: ${stepText}`;
+  }).join('\n');
+  
+  const imagePrompt = `Create a clean, professional flowchart diagram for an IELTS listening test.
 Title: ${title || 'Process Flowchart'}
 The flowchart has the following steps connected by arrows flowing downward:
 ${stepDescriptions}
@@ -456,75 +455,24 @@ Style requirements:
 - Easy to read text
 - Professional appearance suitable for a test`;
 
-    // Use the latest stable image generation model
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${geminiApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: imagePrompt }] }],
-          generationConfig: {
-            responseModalities: ['TEXT', 'IMAGE'],
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Flowchart image generation failed:', response.status, errorText);
-      
-      if (response.status === 429) {
-        console.error('Rate limit exceeded for image generation');
-      } else if (response.status === 403) {
-        console.error('API key may not have image generation permissions');
-      }
-      return null;
-    }
-
-    const data = await response.json();
-    
-    // Extract image from Gemini response format
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    for (const part of parts) {
-      if (part.inlineData?.mimeType?.startsWith('image/')) {
-        const base64Data = part.inlineData.data;
-        const mimeType = part.inlineData.mimeType;
-        console.log('Flowchart image generated successfully');
-        return `data:${mimeType};base64,${base64Data}`;
-      }
-    }
-    
-    console.error('No image data in flowchart response');
-    return null;
-  } catch (err) {
-    console.error('Flowchart image generation error:', err);
-    return null;
-  }
+  console.log('Generating flowchart image for IELTS test...');
+  return await generateImageWithLovableGateway(imagePrompt);
 }
-
-// Generate chart/graph image for Writing Task 1 using Gemini (direct API)
+// Generate chart/graph image for Writing Task 1 using Lovable AI Gateway
 async function generateWritingTask1Image(
   visualType: string,
   visualDescription: string,
   dataDescription: string,
-  geminiApiKey: string
+  _geminiApiKey?: string // Kept for backward compatibility, but not used
 ): Promise<string | null> {
-  if (!geminiApiKey) {
-    console.error('Gemini API key not provided for Writing Task 1 image generation');
-    return null;
-  }
-
-  try {
-    console.log(`Generating ${visualType} image for Writing Task 1...`);
-    
-    // Build a detailed prompt based on visual type
-    let imagePrompt = '';
-    
-    switch (visualType?.toUpperCase()) {
-      case 'BAR_CHART':
-        imagePrompt = `Create a professional bar chart for an IELTS Academic Writing Task 1.
+  console.log(`Generating ${visualType} image for Writing Task 1...`);
+  
+  // Build a detailed prompt based on visual type
+  let imagePrompt = '';
+  
+  switch (visualType?.toUpperCase()) {
+    case 'BAR_CHART':
+      imagePrompt = `Create a professional bar chart for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -536,10 +484,10 @@ Style requirements:
 - Professional, clean style suitable for an academic test
 - Include realistic data values on the axes
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'LINE_GRAPH':
-        imagePrompt = `Create a professional line graph for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'LINE_GRAPH':
+      imagePrompt = `Create a professional line graph for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -551,10 +499,10 @@ Style requirements:
 - Data points marked on the lines
 - Professional, clean style suitable for an academic test
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'PIE_CHART':
-        imagePrompt = `Create a professional pie chart for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'PIE_CHART':
+      imagePrompt = `Create a professional pie chart for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -565,10 +513,10 @@ Style requirements:
 - Legend showing what each color represents
 - Professional, clean style suitable for an academic test
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'TABLE':
-        imagePrompt = `Create a professional data table for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'TABLE':
+      imagePrompt = `Create a professional data table for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -580,10 +528,10 @@ Style requirements:
 - Professional, clean style suitable for an academic test
 - Easy to read text
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'MIXED_CHARTS':
-        imagePrompt = `Create a professional combination of two charts for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'MIXED_CHARTS':
+      imagePrompt = `Create a professional combination of two charts for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -594,10 +542,10 @@ Style requirements:
 - Professional, clean style suitable for an academic test
 - Distinct colors that work well together
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'PROCESS_DIAGRAM':
-        imagePrompt = `Create a professional process diagram for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'PROCESS_DIAGRAM':
+      imagePrompt = `Create a professional process diagram for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -609,10 +557,10 @@ Style requirements:
 - Professional, clean style suitable for an academic test
 - Logical layout (left to right or top to bottom)
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'MAP':
-        imagePrompt = `Create a professional map comparison for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'MAP':
+      imagePrompt = `Create a professional map comparison for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -624,10 +572,10 @@ Style requirements:
 - A clear title at the top
 - Professional, clean style suitable for an academic test
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      case 'COMPARISON_DIAGRAM':
-        imagePrompt = `Create a professional comparison diagram for an IELTS Academic Writing Task 1.
+      break;
+      
+    case 'COMPARISON_DIAGRAM':
+      imagePrompt = `Create a professional comparison diagram for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -637,11 +585,11 @@ Style requirements:
 - A clear title at the top
 - Professional, clean style suitable for an academic test
 - Ultra high resolution, crisp graphics`;
-        break;
-        
-      default:
-        // Generic visual
-        imagePrompt = `Create a professional chart or graph for an IELTS Academic Writing Task 1.
+      break;
+      
+    default:
+      // Generic visual
+      imagePrompt = `Create a professional chart or graph for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
 
@@ -651,48 +599,9 @@ Style requirements:
 - A clear title at the top
 - Suitable for an academic test
 - Ultra high resolution, crisp graphics`;
-    }
-
-    // Use the latest stable image generation model
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${geminiApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: imagePrompt }] }],
-          generationConfig: {
-            responseModalities: ['TEXT', 'IMAGE'],
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Writing Task 1 image generation failed:', response.status, errorText);
-      return null;
-    }
-
-    const data = await response.json();
-    
-    // Extract image from Gemini response format
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    for (const part of parts) {
-      if (part.inlineData?.mimeType?.startsWith('image/')) {
-        const base64Data = part.inlineData.data;
-        const mimeType = part.inlineData.mimeType;
-        console.log('Writing Task 1 image generated successfully');
-        return `data:${mimeType};base64,${base64Data}`;
-      }
-    }
-    
-    console.error('No image data in response');
-    return null;
-  } catch (err) {
-    console.error('Writing Task 1 image generation error:', err);
-    return null;
   }
+
+  return await generateImageWithLovableGateway(imagePrompt);
 }
 
 async function uploadGeneratedImage(
@@ -2481,6 +2390,9 @@ serve(async (req) => {
       
       console.log(`Generating writing test: taskType=${taskType}, visual=${task1VisualType}, essay=${task2EssayType}`);
 
+      // Track total tokens used for quota tracking
+      let writingTotalTokensUsed = 0;
+
       // Helper function to generate a single task
       async function generateSingleWritingTask(
         taskNum: 1 | 2,
@@ -2551,6 +2463,9 @@ Return ONLY valid JSON:
         }
 
         const result = await callGemini(geminiApiKey, writingPrompt);
+        // Track tokens from this call
+        writingTotalTokensUsed += getLastTokensUsed();
+        
         if (!result) {
           throw new Error(`Failed to generate Task ${taskNum}`);
         }
@@ -2589,6 +2504,12 @@ Return ONLY valid JSON:
       }
 
       try {
+        // Create service client for quota tracking
+        const serviceClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+
         if (isFullTest) {
           // Generate both tasks
           console.log('Generating full writing test with both tasks...');
@@ -2596,6 +2517,11 @@ Return ONLY valid JSON:
             generateSingleWritingTask(1, task1VisualType, task2EssayType),
             generateSingleWritingTask(2, task1VisualType, task2EssayType),
           ]);
+          
+          // Update quota tracking
+          if (writingTotalTokensUsed > 0) {
+            await updateQuotaTracking(serviceClient, user.id, writingTotalTokensUsed);
+          }
           
           return new Response(JSON.stringify({
             testId,
@@ -2618,6 +2544,11 @@ Return ONLY valid JSON:
             task1VisualType,
             task2EssayType
           );
+          
+          // Update quota tracking
+          if (writingTotalTokensUsed > 0) {
+            await updateQuotaTracking(serviceClient, user.id, writingTotalTokensUsed);
+          }
           
           return new Response(JSON.stringify({
             testId,
