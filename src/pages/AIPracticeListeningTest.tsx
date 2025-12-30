@@ -8,6 +8,7 @@ import {
 } from '@/components/listening';
 import { TestOptionsMenu, ContrastMode, TextSizeMode } from '@/components/reading/TestOptionsMenu';
 import { TestStartOverlay } from '@/components/common/TestStartOverlay';
+import { ExitTestConfirmDialog } from '@/components/common/ExitTestConfirmDialog';
 import { StickyNote, ArrowLeft, ArrowRight, Sparkles, Volume2, Play, Pause, AlertCircle } from 'lucide-react';
 import {
   ResizablePanel,
@@ -124,6 +125,7 @@ export default function AIPracticeListeningTest() {
   const [isPaused, setIsPaused] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
   const [showStartOverlay, setShowStartOverlay] = useState(true);
+  const [showExitDialog, setShowExitDialog] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [isNoteSidebarOpen, setIsNoteSidebarOpen] = useState(false);
   const [mobileView, setMobileView] = useState<'questions' | 'audio'>('questions');
@@ -608,12 +610,18 @@ export default function AIPracticeListeningTest() {
           <header className="border-b px-2 md:px-4 py-1 md:py-3 flex items-center justify-between ielts-card ielts-header">
             <div className="flex items-center gap-2 md:gap-4">
               <button 
-                onClick={() => navigate('/ai-practice')}
+                onClick={() => setShowExitDialog(true)}
                 className="p-2 rounded hover:bg-muted transition-colors"
                 title="Exit Test"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
+              <ExitTestConfirmDialog
+                open={showExitDialog}
+                onOpenChange={setShowExitDialog}
+                onConfirm={() => navigate('/ai-practice')}
+                testType="Listening Test"
+              />
               <div className="ielts-logo">
                 <span className="text-lg md:text-xl font-black tracking-tight text-[#c8102e]">IELTS</span>
               </div>

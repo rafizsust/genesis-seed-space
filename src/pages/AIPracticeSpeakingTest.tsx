@@ -10,6 +10,7 @@ import { useTopicCompletions } from '@/hooks/useTopicCompletions';
 import { useSpeechSynthesis } from '@/hooks/useSpeechSynthesis';
 import { TestStartOverlay } from '@/components/common/TestStartOverlay';
 import { AILoadingScreen } from '@/components/common/AILoadingScreen';
+import { ExitTestConfirmDialog } from '@/components/common/ExitTestConfirmDialog';
 import { describeApiError } from '@/lib/apiErrors';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -79,6 +80,7 @@ export default function AIPracticeSpeakingTest() {
   const [test, setTest] = useState<GeneratedTest | null>(null);
   const [loading, setLoading] = useState(true);
   const [showStartOverlay, setShowStartOverlay] = useState(true);
+  const [showExitDialog, setShowExitDialog] = useState(false);
 
   // Test state
   const [phase, setPhase] = useState<TestPhase>('loading');
@@ -920,12 +922,18 @@ export default function AIPracticeSpeakingTest() {
             <Button 
               variant="ghost" 
               size="icon" 
-              onClick={() => navigate('/ai-practice')}
+              onClick={() => setShowExitDialog(true)}
               title="Exit Test"
               className="h-8 w-8 md:h-10 md:w-10"
             >
               <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
             </Button>
+            <ExitTestConfirmDialog
+              open={showExitDialog}
+              onOpenChange={setShowExitDialog}
+              onConfirm={() => navigate('/ai-practice')}
+              testType="Speaking Test"
+            />
             <Badge variant="outline" className="font-mono text-xs md:text-sm">
               Part {currentPart}
             </Badge>

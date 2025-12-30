@@ -7,6 +7,7 @@ import { ReadingTimer } from '@/components/reading/ReadingTimer';
 import { ReadingNavigation } from '@/components/reading/ReadingNavigation';
 import { TestOptionsMenu, ContrastMode, TextSizeMode } from '@/components/reading/TestOptionsMenu';
 import { TestStartOverlay } from '@/components/common/TestStartOverlay';
+import { ExitTestConfirmDialog } from '@/components/common/ExitTestConfirmDialog';
 import { StickyNote, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import {
   ResizableHandle,
@@ -85,6 +86,7 @@ export default function AIPracticeReadingTest() {
   const [isPaused, setIsPaused] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
   const [showStartOverlay, setShowStartOverlay] = useState(true);
+  const [showExitDialog, setShowExitDialog] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [isNoteSidebarOpen, setIsNoteSidebarOpen] = useState(false);
   const [mobileView, setMobileView] = useState<'passage' | 'questions'>('passage');
@@ -661,12 +663,18 @@ export default function AIPracticeReadingTest() {
           <header className="border-b border-border bg-white px-2 md:px-4 py-1 md:py-3 flex items-center justify-between">
             <div className="flex items-center gap-2 md:gap-4">
               <button 
-                onClick={() => navigate('/ai-practice')}
+                onClick={() => setShowExitDialog(true)}
                 className="p-2 rounded hover:bg-muted transition-colors"
                 title="Exit Test"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
+              <ExitTestConfirmDialog
+                open={showExitDialog}
+                onOpenChange={setShowExitDialog}
+                onConfirm={() => navigate('/ai-practice')}
+                testType="Reading Test"
+              />
               <div className="ielts-logo">
                 <span className="text-lg md:text-xl font-black tracking-tight text-[#c8102e]">IELTS</span>
               </div>

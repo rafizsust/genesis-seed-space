@@ -23,6 +23,7 @@ import { describeApiError } from '@/lib/apiErrors';
 import { AILoadingScreen } from '@/components/common/AILoadingScreen';
 import { WritingTestControls } from '@/components/writing/WritingTestControls';
 import { TestStartOverlay } from '@/components/common/TestStartOverlay';
+import { ExitTestConfirmDialog } from '@/components/common/ExitTestConfirmDialog';
 import { Clock, Send, PenTool, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -42,6 +43,7 @@ export default function AIPracticeWritingTest() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
   const [showStartOverlay, setShowStartOverlay] = useState(true);
+  const [showExitDialog, setShowExitDialog] = useState(false);
   const [activeTask, setActiveTask] = useState<'task1' | 'task2'>('task1');
   const [fontSize, setFontSize] = useState(16);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -388,11 +390,17 @@ export default function AIPracticeWritingTest() {
             <Button 
               variant="ghost" 
               size="icon" 
-              onClick={() => navigate('/ai-practice')}
+              onClick={() => setShowExitDialog(true)}
               title="Exit Test"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
+            <ExitTestConfirmDialog
+              open={showExitDialog}
+              onOpenChange={setShowExitDialog}
+              onConfirm={() => navigate('/ai-practice')}
+              testType="Writing Test"
+            />
             <PenTool className="w-5 h-5 text-primary" />
             <div>
               <h1 className="font-semibold text-sm md:text-base">

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AILoadingScreen } from '@/components/common/AILoadingScreen';
+import { GeminiQuotaDisplay } from '@/components/common/GeminiQuotaDisplay';
 import { useToast } from '@/hooks/use-toast';
 import { describeApiError } from '@/lib/apiErrors';
 import { useAuth } from '@/hooks/useAuth';
@@ -605,8 +606,9 @@ export default function AIPractice() {
             </div>
           </div>
 
-          {/* History Link */}
-          <div className="flex justify-end mb-4">
+          {/* History Link and Quota Display */}
+          <div className="flex justify-between items-center mb-4">
+            <GeminiQuotaDisplay compact />
             <Link to="/ai-practice/history">
               <Button variant="outline" size="sm">
                 <Clock className="w-4 h-4 mr-2" />

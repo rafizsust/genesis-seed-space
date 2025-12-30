@@ -254,6 +254,36 @@ export type Database = {
         }
         Relationships: []
       }
+      gemini_daily_usage: {
+        Row: {
+          created_at: string
+          id: string
+          last_updated_at: string
+          requests_count: number
+          tokens_used: number
+          usage_date: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_updated_at?: string
+          requests_count?: number
+          tokens_used?: number
+          usage_date?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_updated_at?: string
+          requests_count?: number
+          tokens_used?: number
+          usage_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       listening_question_groups: {
         Row: {
           created_at: string | null

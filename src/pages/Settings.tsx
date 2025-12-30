@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { GeminiApiKeyManager } from '@/components/user/GeminiApiKeyManager';
+import { GeminiQuotaDisplay } from '@/components/common/GeminiQuotaDisplay';
 import { AudioTranscriptionPOC } from '@/components/user/AudioTranscriptionPOC';
 import { toast } from 'sonner';
 import { Navbar } from '@/components/Navbar';
@@ -120,9 +121,13 @@ export default function Settings() {
           <Card>
             <CardHeader>
               <CardTitle>AI Integrations</CardTitle>
+              <CardDescription>
+                Manage your Gemini API key and view usage statistics.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               <GeminiApiKeyManager />
+              <GeminiQuotaDisplay showCard={false} />
             </CardContent>
           </Card>
 
