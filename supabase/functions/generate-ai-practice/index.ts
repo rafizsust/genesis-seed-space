@@ -354,55 +354,63 @@ function extractJsonFromResponse(text: string): string {
   throw new Error('Could not extract valid JSON from AI response');
 }
 
-// Generate image using Gemini's native image generation (gemini-2.5-flash-image model)
-// This uses generateContent with responseModalities which is FREE with user's API key
-async function generateImageWithGemini(prompt: string, geminiApiKey: string): Promise<string | null> {
+// Generate SVG code using Gemini text models (no image API required)
+// Returns valid SVG code that can be rendered directly in the browser
+async function generateSvgWithGemini(prompt: string, geminiApiKey: string): Promise<string | null> {
   if (!geminiApiKey) {
-    console.error('Gemini API key not provided for image generation');
+    console.error('Gemini API key not provided for SVG generation');
     return null;
   }
 
-  // Use the stable gemini-2.5-flash-image model (the deprecated gemini-2.0-flash-preview-image-generation caused 404 errors)
-  const model = 'gemini-2.5-flash-image';
+  const svgPrompt = `${prompt}
+
+CRITICAL OUTPUT REQUIREMENTS:
+- Return ONLY valid SVG code, nothing else
+- Do NOT wrap in markdown code blocks
+- Start with <svg and end with </svg>
+- Use viewBox for responsive sizing (e.g., viewBox="0 0 800 600")
+- Use clean, professional styling suitable for an exam
+- Style: Clean architectural diagram with white/light background
+- Use black or dark gray (#333) for lines and text
+- Use subtle colors for fills (light blues, greens, grays)
+- Include all text labels clearly visible
+- Ensure good contrast and readability
+- Keep the SVG simple and clean, avoid gradients where possible`;
+
   const maxRetries = 2;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Generating image with ${model}${attempt > 0 ? ` (retry ${attempt})` : ''}...`);
+      console.log(`Generating SVG with Gemini${attempt > 0 ? ` (retry ${attempt})` : ''}...`);
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{
-              parts: [{ text: prompt }]
-            }],
+            contents: [{ parts: [{ text: svgPrompt }] }],
             generationConfig: {
-              responseModalities: ["TEXT", "IMAGE"]
-            }
+              temperature: 0.7,
+              maxOutputTokens: 4096,
+            },
           }),
         }
       );
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.log(`Image generation failed (${response.status}): ${errorText}`);
+        console.log(`SVG generation failed (${response.status}): ${errorText}`);
         
-        // For rate limits, wait and retry
         if (response.status === 429 && attempt < maxRetries) {
-          const delay = Math.min(5000 * Math.pow(2, attempt), 30000);
+          const delay = Math.min(3000 * Math.pow(2, attempt), 15000);
           console.log(`Rate limited, waiting ${delay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
         
-        // For server errors, retry with backoff
         if (response.status >= 500 && attempt < maxRetries) {
-          const delay = Math.min(2000 * Math.pow(2, attempt), 15000);
+          const delay = Math.min(2000 * Math.pow(2, attempt), 10000);
           console.log(`Server error, waiting ${delay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
@@ -412,26 +420,40 @@ async function generateImageWithGemini(prompt: string, geminiApiKey: string): Pr
       }
 
       const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       
-      // Extract image from response - Gemini returns images in parts[].inlineData
-      const parts = data.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          const mimeType = part.inlineData.mimeType || 'image/png';
-          console.log(`Image generated successfully with ${model}`);
-          return `data:${mimeType};base64,${part.inlineData.data}`;
+      if (text) {
+        // Extract SVG from response (may have markdown wrapper)
+        let svg = text.trim();
+        
+        // Remove markdown code blocks if present
+        const codeBlockMatch = svg.match(/```(?:svg|xml)?\s*\n?([\s\S]*?)\n?```/);
+        if (codeBlockMatch && codeBlockMatch[1]) {
+          svg = codeBlockMatch[1].trim();
         }
+        
+        // Validate it looks like SVG
+        if (svg.toLowerCase().startsWith('<svg') && svg.toLowerCase().includes('</svg>')) {
+          console.log('SVG generated successfully');
+          return svg;
+        }
+        
+        // Try to extract SVG from mixed content
+        const svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
+        if (svgMatch) {
+          console.log('SVG extracted from response');
+          return svgMatch[0];
+        }
+        
+        console.log('Response did not contain valid SVG');
       }
       
-      console.log(`No image data in response, attempt ${attempt + 1}/${maxRetries + 1}`);
-      
-      // If no image but no error, might be a transient issue - retry
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 2000));
         continue;
       }
     } catch (err) {
-      console.error(`Image generation error (attempt ${attempt + 1}):`, err);
+      console.error(`SVG generation error (attempt ${attempt + 1}):`, err);
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 2000));
         continue;
@@ -439,43 +461,47 @@ async function generateImageWithGemini(prompt: string, geminiApiKey: string): Pr
     }
   }
 
-  console.error('Image generation failed after all retries');
+  console.error('SVG generation failed after all retries');
   return null;
 }
 
-// Generate map image using Gemini Imagen
-async function generateMapImage(
+// Generate map SVG using Gemini text model
+async function generateMapSvg(
   mapDescription: string, 
   mapLabels: Array<{id: string; text: string}>,
   landmarks?: Array<{id: string; text: string}>,
   geminiApiKey?: string
 ): Promise<string | null> {
   if (!geminiApiKey) {
-    console.error('Gemini API key not provided for map generation');
+    console.error('Gemini API key not provided for map SVG generation');
     return null;
   }
   
   const answerPositions = mapLabels.map(l => l.id).join(', ');
   const landmarksList = landmarks?.map(l => `${l.text}`).join(', ') || 'streets and pathways';
   
-  const imagePrompt = `Create a simple, clean map diagram for an IELTS listening test.
+  const svgPrompt = `Create an SVG map diagram for an IELTS listening test.
 The map shows: ${mapDescription}
 
-CRITICAL INSTRUCTIONS:
-- Show letter circles (${answerPositions}) at various positions on the map - these are ANSWER POSITIONS that are NOT labeled with names
-- Show these LABELED reference points that students can use to navigate: ${landmarksList}
-- The letter circles should just show the letter (A, B, C, etc.) with NO text label next to them
-- Include a compass showing N, S, E, W in the top-right corner
-- Style: Top-down view, simple line art, educational diagram style like official IELTS test maps
-- Make it look professional with clear pathways, streets, and building outlines
-- The reference landmarks should have their names visible on the map`;
+CRITICAL SVG REQUIREMENTS:
+- Create valid SVG code with viewBox="0 0 800 600"
+- Use a white (#ffffff) or very light gray (#f8f9fa) background rectangle
+- Draw simple shapes for buildings (rectangles), roads (lines/paths), and areas
+- Show letter circles (${answerPositions}) at various positions - white circles with black border and letter inside
+- Show these LABELED reference points with text: ${landmarksList}
+- Include a compass (N/S/E/W) in the top-right corner
+- Style: Architectural diagram, clean lines, professional appearance
+- Use black (#333333) for lines, dark text
+- Use light fills for buildings (#e0e0e0), paths (#cccccc)
+- Make text readable with font-size 14-16px
+- The letter circles should be approximately 30px diameter`;
 
-  console.log('Generating map image for IELTS test...');
-  return await generateImageWithGemini(imagePrompt, geminiApiKey);
+  console.log('Generating map SVG for IELTS test...');
+  return await generateSvgWithGemini(svgPrompt, geminiApiKey);
 }
 
-// Generate flowchart image using Gemini Imagen
-async function generateFlowchartImage(
+// Generate flowchart SVG using Gemini text model
+async function generateFlowchartSvg(
   title: string, 
   steps: Array<{label?: string; text?: string; isBlank?: boolean; questionNumber?: number}>,
   geminiApiKey?: string
@@ -489,177 +515,151 @@ async function generateFlowchartImage(
   const stepDescriptions = steps.map((step, idx) => {
     const stepText = step.label || step.text || '';
     if (step.isBlank) {
-      return `Step ${idx + 1}: [BLANK ${step.questionNumber || idx + 1}] (empty box for answer)`;
+      return `Step ${idx + 1}: [BLANK ${step.questionNumber || idx + 1}] (empty box with "?" inside)`;
     }
-    return `Step ${idx + 1}: ${stepText}`;
+    return `Step ${idx + 1}: "${stepText}"`;
   }).join('\n');
   
-  const imagePrompt = `Create a clean, professional flowchart diagram for an IELTS listening test.
+  const svgPrompt = `Create an SVG flowchart diagram for an IELTS listening test.
 Title: ${title || 'Process Flowchart'}
+
 The flowchart has the following steps connected by arrows flowing downward:
 ${stepDescriptions}
 
-Style requirements:
-- Vertical flow from top to bottom
-- Each step in a rounded rectangle box
-- Clear arrows connecting steps
-- Blank steps should show an empty box with a question number
-- Clean, educational diagram style
-- Easy to read text
-- Professional appearance suitable for a test`;
+CRITICAL SVG REQUIREMENTS:
+- Create valid SVG code with viewBox="0 0 600 800"
+- White (#ffffff) background rectangle
+- Vertical flow from top to bottom, centered
+- Title at top in bold, font-size 20px
+- Each step in a rounded rectangle (rx="8") with light gray fill (#f0f0f0) and dark border (#333)
+- Clear downward arrows between steps (use polygon or path for arrowheads)
+- Blank steps should have dashed border and show "?" with question number
+- Text inside boxes in black, font-size 14px, centered
+- Consistent spacing between elements (about 60px between boxes)
+- Professional, clean appearance suitable for an exam`;
 
-  console.log('Generating flowchart image for IELTS test...');
-  return await generateImageWithGemini(imagePrompt, geminiApiKey);
+  console.log('Generating flowchart SVG for IELTS test...');
+  return await generateSvgWithGemini(svgPrompt, geminiApiKey);
 }
-// Generate chart/graph image for Writing Task 1 using Gemini Imagen
-async function generateWritingTask1Image(
+// Generate chart/graph SVG for Writing Task 1 using Gemini text model
+async function generateWritingTask1Svg(
   visualType: string,
   visualDescription: string,
   dataDescription: string,
   geminiApiKey?: string
 ): Promise<string | null> {
   if (!geminiApiKey) {
-    console.error('Gemini API key not provided for Writing Task 1 image generation');
+    console.error('Gemini API key not provided for Writing Task 1 SVG generation');
     return null;
   }
   
-  console.log(`Generating ${visualType} image for Writing Task 1...`);
+  console.log(`Generating ${visualType} SVG for Writing Task 1...`);
   
-  // Build a detailed prompt based on visual type
-  let imagePrompt = '';
+  // Build SVG-specific prompt based on visual type
+  let svgPrompt = '';
+  const baseStyle = `
+CRITICAL SVG REQUIREMENTS:
+- Create valid SVG code with viewBox="0 0 800 500"
+- White (#ffffff) background rectangle
+- Black text (#333333) for all labels
+- Professional, clean appearance suitable for an academic exam
+- Clear title at the top in bold, font-size 18px
+- Axis labels and legend with font-size 12-14px`;
   
   switch (visualType?.toUpperCase()) {
     case 'BAR_CHART':
-      imagePrompt = `Create a professional bar chart for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG bar chart for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear vertical or horizontal bars with distinct colors
-- Properly labeled X and Y axes with units
-- A clear title at the top
-- Legend if comparing multiple categories
-- Professional, clean style suitable for an academic test
-- Include realistic data values on the axes
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Draw vertical or horizontal bars with distinct fill colors
+- Include X and Y axes with tick marks and labels
+- Add a legend if comparing categories
+- Use colors like #4299e1, #48bb78, #ed8936, #9f7aea for bars`;
       break;
       
     case 'LINE_GRAPH':
-      imagePrompt = `Create a professional line graph for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG line graph for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear trend lines with different colors/styles for each data series
-- Properly labeled X axis (usually time periods) and Y axis with units
-- A clear title at the top
-- Legend showing what each line represents
-- Data points marked on the lines
-- Professional, clean style suitable for an academic test
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Draw trend lines using <path> or <polyline> with stroke colors
+- Mark data points with small circles
+- Include X axis (time periods) and Y axis with labels
+- Add a legend showing what each line represents
+- Use colors like #4299e1, #e53e3e, #38a169 for different lines`;
       break;
       
     case 'PIE_CHART':
-      imagePrompt = `Create a professional pie chart for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG pie chart for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear segments with distinct colors
-- Percentage labels on or next to each segment
-- A clear title at the top
-- Legend showing what each color represents
-- Professional, clean style suitable for an academic test
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Draw pie segments using <path> with arc commands
+- Use distinct colors for each segment
+- Add percentage labels near or on each segment
+- Include a legend with color boxes and category names
+- Center the pie chart in the viewBox`;
       break;
       
     case 'TABLE':
-      imagePrompt = `Create a professional data table for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG data table for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear rows and columns with headers
-- Alternating row colors for readability
-- A clear title at the top
-- Units specified in column headers
-- Professional, clean style suitable for an academic test
-- Easy to read text
-- Ultra high resolution, crisp graphics`;
-      break;
-      
-    case 'MIXED_CHARTS':
-      imagePrompt = `Create a professional combination of two charts for an IELTS Academic Writing Task 1.
-${visualDescription}
-${dataDescription}
-
-Style requirements:
-- Two charts side by side (e.g., a pie chart and a bar chart, or a line graph and a bar chart)
-- Each chart has clear labels and a subtitle
-- Overall title at the top
-- Professional, clean style suitable for an academic test
-- Distinct colors that work well together
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Draw table using rectangles for cells
+- Header row with gray background (#e2e8f0)
+- Alternating row colors (#ffffff and #f7fafc)
+- Clear borders between cells
+- Text centered in cells`;
       break;
       
     case 'PROCESS_DIAGRAM':
-      imagePrompt = `Create a professional process diagram for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG process diagram for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear steps connected by arrows showing the process flow
-- Each step in a box or shape with descriptive text
-- Arrows showing direction of flow
-- A clear title at the top
-- Professional, clean style suitable for an academic test
-- Logical layout (left to right or top to bottom)
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Show process steps in boxes connected by arrows
+- Use rounded rectangles for steps with light fill
+- Clear directional arrows between steps
+- Steps can flow left-to-right or top-to-bottom
+- Number or label each step clearly`;
       break;
       
     case 'MAP':
-      imagePrompt = `Create a professional map comparison for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG map comparison for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Two maps side by side showing 'before' and 'after' or comparison of two time periods
-- Clear labels for key features
-- Legend explaining symbols
-- Compass direction indicator
-- A clear title at the top
-- Professional, clean style suitable for an academic test
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Show two maps side by side (before/after or two time periods)
+- Use simple shapes for buildings, roads, areas
+- Include compass indicator (N/S/E/W) on each map
+- Label key features clearly
+- Include a simple legend if needed
+- Year labels above each map`;
       break;
       
-    case 'COMPARISON_DIAGRAM':
-      imagePrompt = `Create a professional comparison diagram for an IELTS Academic Writing Task 1.
+    case 'MIXED_CHARTS':
+      svgPrompt = `Create an SVG with two charts side by side for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear visual comparison of two items/processes
-- Labels and annotations
-- A clear title at the top
-- Professional, clean style suitable for an academic test
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Draw two different chart types (e.g., bar + pie, or line + bar)
+- Each chart has its own subtitle
+- Consistent styling across both charts
+- Overall title at the top`;
       break;
       
     default:
-      // Generic visual
-      imagePrompt = `Create a professional chart or graph for an IELTS Academic Writing Task 1.
+      svgPrompt = `Create an SVG chart or diagram for an IELTS Academic Writing Task 1.
 ${visualDescription}
 ${dataDescription}
-
-Style requirements:
-- Clear, professional appearance
-- Properly labeled with units and legend
-- A clear title at the top
-- Suitable for an academic test
-- Ultra high resolution, crisp graphics`;
+${baseStyle}
+- Choose the most appropriate visualization style
+- Include all necessary labels and legends`;
   }
 
-  return await generateImageWithGemini(imagePrompt, geminiApiKey);
+  return await generateSvgWithGemini(svgPrompt, geminiApiKey);
 }
 
 async function uploadGeneratedImage(
@@ -2078,48 +2078,42 @@ serve(async (req) => {
           use_dropdown: true
         };
       } else if (questionType === 'FLOWCHART_COMPLETION') {
-        // Generate flowchart image for reading tests
-        let flowchartImageUrl: string | undefined;
+        // Generate flowchart SVG for reading tests
+        let flowchartSvg: string | undefined;
         if (parsed.flowchart_steps) {
-          console.log('Generating flowchart image for reading FLOWCHART_COMPLETION...');
-          const flowchartImageData = await generateFlowchartImage(
+          console.log('Generating flowchart SVG for reading FLOWCHART_COMPLETION...');
+          const svgCode = await generateFlowchartSvg(
             parsed.flowchart_title || 'Process Flowchart',
             parsed.flowchart_steps,
             geminiApiKey
           );
-          if (flowchartImageData) {
-            const uploadedUrl = await uploadGeneratedImage(supabaseClient, flowchartImageData, testId, 'ai-practice-flowcharts');
-            if (uploadedUrl) {
-              flowchartImageUrl = uploadedUrl;
-            }
+          if (svgCode) {
+            flowchartSvg = svgCode;
           }
         }
         groupOptions = { 
           flowchart_title: parsed.flowchart_title,
           flowchart_steps: parsed.flowchart_steps,
-          imageUrl: flowchartImageUrl,
+          svgCode: flowchartSvg, // SVG code for direct rendering
         };
       } else if (questionType === 'TABLE_COMPLETION') {
         groupOptions = { table_data: parsed.table_data };
       } else if (questionType === 'NOTE_COMPLETION') {
         groupOptions = { note_sections: parsed.note_sections };
       } else if (questionType === 'MAP_LABELING') {
-        // Generate map image for reading tests
-        let mapImageUrl: string | undefined;
+        // Generate map SVG for reading tests
+        let mapSvg: string | undefined;
         if (parsed.map_description && parsed.map_labels) {
-          console.log('Generating map image for reading MAP_LABELING...');
-          const mapImageData = await generateMapImage(parsed.map_description, parsed.map_labels, undefined, geminiApiKey);
-          if (mapImageData) {
-            const uploadedUrl = await uploadGeneratedImage(supabaseClient, mapImageData, testId, 'ai-practice-maps');
-            if (uploadedUrl) {
-              mapImageUrl = uploadedUrl;
-            }
+          console.log('Generating map SVG for reading MAP_LABELING...');
+          const svgCode = await generateMapSvg(parsed.map_description, parsed.map_labels, undefined, geminiApiKey);
+          if (svgCode) {
+            mapSvg = svgCode;
           }
         }
         groupOptions = { 
           map_description: parsed.map_description,
           map_labels: parsed.map_labels,
-          imageUrl: mapImageUrl,
+          svgCode: mapSvg, // SVG code for direct rendering
         };
       } else if (questionType.includes('MULTIPLE_CHOICE') && parsed.questions?.[0]?.options) {
         // For MCQ Multiple, store max_answers + option_format at GROUP level so UI + navigation can read it.
@@ -2305,27 +2299,23 @@ serve(async (req) => {
         const shuffledDragOptions = [...(parsed.drag_options || [])].sort(() => Math.random() - 0.5);
         groupOptions = { options: shuffledDragOptions, option_format: 'A' };
       } else if (questionType === 'MAP_LABELING') {
-        // Generate map image using Lovable AI
-        let mapImageUrl: string | undefined;
+        // Generate map SVG using Gemini text model
+        let mapSvg: string | undefined;
         if (parsed.map_description && parsed.map_labels) {
-          console.log('Generating map image for MAP_LABELING...');
-          const mapImageData = await generateMapImage(parsed.map_description, parsed.map_labels, parsed.landmarks, geminiApiKey);
-          if (mapImageData) {
-            const uploadedUrl = await uploadGeneratedImage(supabaseClient, mapImageData, testId, 'ai-practice-maps');
-            if (uploadedUrl) {
-              mapImageUrl = uploadedUrl;
-            }
+          console.log('Generating map SVG for MAP_LABELING...');
+          const svgCode = await generateMapSvg(parsed.map_description, parsed.map_labels, parsed.landmarks, geminiApiKey);
+          if (svgCode) {
+            mapSvg = svgCode;
           }
         }
         
         groupOptions = {
           map_description: parsed.map_description,
-          map_labels: parsed.map_labels, // Answer positions A-H (shown as circles only)
-          landmarks: parsed.landmarks || [], // Reference landmarks with text labels
-          imageUrl: mapImageUrl,
-          // Drop zones not needed for table-based UI, but keep for compatibility
+          map_labels: parsed.map_labels,
+          landmarks: parsed.landmarks || [],
+          svgCode: mapSvg, // SVG code for direct rendering
           dropZones: [],
-          options: [], // Not used for table-based selection
+          options: [],
         };
       } else if (questionType === 'NOTE_COMPLETION' && parsed.note_sections) {
         // Map note_sections to noteCategories format expected by NoteStyleFillInBlank
@@ -2532,11 +2522,11 @@ Return ONLY valid JSON:
           const jsonStr = extractJsonFromResponse(result);
           const parsed = JSON.parse(jsonStr);
           
-          // For Task 1, generate the actual image
-          let imageBase64: string | null = null;
+          // For Task 1, generate SVG instead of image
+          let svgCode: string | null = null;
           if (isTask1 && parsed.visual_description) {
-            console.log(`Generating image for Task 1: ${parsed.visual_type}`);
-            imageBase64 = await generateWritingTask1Image(
+            console.log(`Generating SVG for Task 1: ${parsed.visual_type}`);
+            svgCode = await generateWritingTask1Svg(
               parsed.visual_type || visualType,
               parsed.visual_description,
               parsed.data_description || '',
@@ -2549,7 +2539,7 @@ Return ONLY valid JSON:
             task_type: isTask1 ? 'task1' : 'task2',
             instruction: parsed.instruction,
             image_description: parsed.visual_description,
-            image_base64: imageBase64,
+            svgCode: svgCode, // SVG code for direct rendering
             visual_type: parsed.visual_type,
             essay_type: parsed.essay_type,
             word_limit_min: isTask1 ? 150 : 250,

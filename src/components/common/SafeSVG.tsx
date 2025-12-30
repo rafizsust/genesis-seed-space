@@ -1,0 +1,121 @@
+import { useState, useMemo } from 'react';
+import { AlertCircle, Image as ImageIcon } from 'lucide-react';
+
+interface SafeSVGProps {
+  svgCode: string | null | undefined;
+  fallbackDescription?: string;
+  className?: string;
+  maxWidth?: number;
+  maxHeight?: number;
+}
+
+/**
+ * Safely renders SVG code with validation and error handling.
+ * Shows a professional placeholder if SVG is invalid or missing.
+ */
+export function SafeSVG({ 
+  svgCode, 
+  fallbackDescription = 'Diagram content not available',
+  className = '',
+  maxWidth = 600,
+  maxHeight = 400
+}: SafeSVGProps) {
+  const [hasError, setHasError] = useState(false);
+
+  // Sanitize and validate SVG code
+  const sanitizedSvg = useMemo(() => {
+    if (!svgCode || typeof svgCode !== 'string') {
+      return null;
+    }
+
+    try {
+      // Extract SVG from markdown code blocks if present
+      let svg = svgCode.trim();
+      
+      // Handle ```svg ... ``` or ```xml ... ``` code blocks
+      const codeBlockMatch = svg.match(/```(?:svg|xml)?\s*\n?([\s\S]*?)\n?```/);
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        svg = codeBlockMatch[1].trim();
+      }
+      
+      // Ensure it starts with <svg and ends with </svg>
+      if (!svg.toLowerCase().startsWith('<svg')) {
+        // Try to find SVG tag within the content
+        const svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
+        if (svgMatch) {
+          svg = svgMatch[0];
+        } else {
+          console.warn('SafeSVG: No valid SVG tag found');
+          return null;
+        }
+      }
+      
+      // Basic security: remove script tags and event handlers
+      svg = svg.replace(/<script[\s\S]*?<\/script>/gi, '');
+      svg = svg.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+      svg = svg.replace(/javascript:/gi, '');
+      
+      // Ensure proper viewBox for responsive sizing
+      if (!svg.includes('viewBox')) {
+        // Try to extract width/height and add viewBox
+        const widthMatch = svg.match(/width=["']?(\d+)/);
+        const heightMatch = svg.match(/height=["']?(\d+)/);
+        const w = widthMatch ? parseInt(widthMatch[1]) : 800;
+        const h = heightMatch ? parseInt(heightMatch[1]) : 600;
+        svg = svg.replace('<svg', `<svg viewBox="0 0 ${w} ${h}"`);
+      }
+      
+      // Make SVG responsive by removing fixed width/height
+      svg = svg.replace(/(<svg[^>]*)\swidth=["'][^"']*["']/i, '$1');
+      svg = svg.replace(/(<svg[^>]*)\sheight=["'][^"']*["']/i, '$1');
+      
+      // Add responsive attributes
+      svg = svg.replace('<svg', '<svg preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto"');
+      
+      return svg;
+    } catch (e) {
+      console.error('SafeSVG: Error processing SVG:', e);
+      return null;
+    }
+  }, [svgCode]);
+
+  // Show placeholder if SVG is invalid or failed to render
+  if (!sanitizedSvg || hasError) {
+    return (
+      <div 
+        className={`flex flex-col items-center justify-center bg-muted/30 border border-border rounded-lg p-8 ${className}`}
+        style={{ maxWidth, minHeight: 200 }}
+      >
+        <div className="flex items-center gap-2 text-muted-foreground mb-3">
+          <AlertCircle className="h-5 w-5" />
+          <span className="font-medium">Diagram Unavailable</span>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground/70 mb-4">
+          <ImageIcon className="h-4 w-4" />
+          <span className="text-sm">Visual representation could not be generated</span>
+        </div>
+        {fallbackDescription && (
+          <div className="text-center text-sm text-muted-foreground bg-background/50 rounded-md p-4 max-w-md border border-border/50">
+            <p className="font-medium mb-1">Description:</p>
+            <p className="italic">{fallbackDescription}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className={`svg-container bg-white rounded-lg border border-border overflow-hidden ${className}`}
+      style={{ maxWidth, maxHeight }}
+    >
+      <div
+        className="w-full h-full flex items-center justify-center p-2"
+        dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
+        onError={() => setHasError(true)}
+      />
+    </div>
+  );
+}
+
+export default SafeSVG;
