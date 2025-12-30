@@ -56,14 +56,16 @@ export interface IELTSChartData {
   charts?: IELTSChartData[]; // For mixed charts
 }
 
-// Default colors for charts
+// Default colors for charts - highly distinguishable palette like official IELTS
 const CHART_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(200 70% 50%)',
-  'hsl(150 60% 45%)',
-  'hsl(30 80% 55%)',
-  'hsl(280 60% 55%)',
-  'hsl(0 70% 55%)',
+  '#3366CC', // Strong blue
+  '#DC3912', // Strong red
+  '#109618', // Strong green
+  '#FF9900', // Orange
+  '#990099', // Purple
+  '#0099C6', // Teal
+  '#DD4477', // Pink
+  '#66AA00', // Lime green
 ];
 
 interface IELTSVisualRendererProps {
@@ -152,56 +154,164 @@ export function IELTSVisualRenderer({
   );
 }
 
-// Bar Chart Renderer
+// Bar Chart Renderer (IELTS-style: vertical bars with percentage Y-axis and grid lines)
 function BarChartRenderer({ 
   data, 
-  getColor 
+  getColor,
+  isGrouped = false,
 }: { 
   data: IELTSChartData; 
   getColor: (index: number, color?: string) => string;
+  isGrouped?: boolean;
 }) {
-  const items = data.data || [];
+  const items = (data.data || []).filter(d => d?.label && typeof d.value === 'number');
+  if (items.length === 0) {
+    return (
+      <div className="text-center text-muted-foreground text-sm">
+        Bar chart data not available
+      </div>
+    );
+  }
+
   const maxValue = Math.max(...items.map(d => d.value), 1);
+  // Round up to nice tick value
+  const niceMax = Math.ceil(maxValue / 10) * 10 || 100;
+  const tickCount = 5;
+  const tickStep = niceMax / tickCount;
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => i * tickStep);
+
+  const W = 560;
+  const H = 320;
+  const pad = { left: 50, right: 20, top: 20, bottom: 60 };
+  const innerW = W - pad.left - pad.right;
+  const innerH = H - pad.top - pad.bottom;
+
+  const barWidth = Math.min(50, (innerW / items.length) * 0.6);
+  const barGap = (innerW - barWidth * items.length) / (items.length + 1);
+
+  const xAt = (i: number) => pad.left + barGap + i * (barWidth + barGap) + barWidth / 2;
+  const yAt = (v: number) => pad.top + (1 - v / niceMax) * innerH;
 
   return (
-    <div className="space-y-3">
-      {/* Y-axis label */}
+    <div className="space-y-2">
       {data.yAxisLabel && (
         <div className="text-xs text-muted-foreground text-center">{data.yAxisLabel}</div>
       )}
-      
-      {/* Bars */}
-      <div className="space-y-2">
-        {items.map((item, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-20 truncate text-right">
-              {item.label}
-            </span>
-            <div className="flex-1 h-6 bg-muted/30 rounded overflow-hidden">
-              <div 
-                className="h-full rounded transition-all duration-300"
-                style={{ 
-                  width: `${(item.value / maxValue) * 100}%`,
-                  backgroundColor: getColor(idx, item.color),
-                }}
-              />
-            </div>
-            <span className="text-xs font-medium w-12 text-foreground">
-              {item.value}
-            </span>
-          </div>
-        ))}
+
+      <div className="w-full overflow-x-auto">
+        <svg
+          className="block mx-auto"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={data.title || 'Bar chart'}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* Horizontal grid lines */}
+          {ticks.map((v, idx) => {
+            const y = yAt(v);
+            return (
+              <g key={idx}>
+                <line
+                  x1={pad.left}
+                  y1={y}
+                  x2={W - pad.right}
+                  y2={y}
+                  stroke="#333"
+                  strokeWidth={0.5}
+                />
+                <text
+                  x={pad.left - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  fontSize={11}
+                  fill="#666"
+                >
+                  {v}%
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Y-axis */}
+          <line
+            x1={pad.left}
+            y1={pad.top}
+            x2={pad.left}
+            y2={H - pad.bottom}
+            stroke="#333"
+            strokeWidth={1}
+          />
+          {/* X-axis */}
+          <line
+            x1={pad.left}
+            y1={H - pad.bottom}
+            x2={W - pad.right}
+            y2={H - pad.bottom}
+            stroke="#333"
+            strokeWidth={1}
+          />
+
+          {/* Bars */}
+          {items.map((item, idx) => {
+            const x = xAt(idx);
+            const barH = (item.value / niceMax) * innerH;
+            const y = H - pad.bottom - barH;
+            return (
+              <g key={idx}>
+                <rect
+                  x={x - barWidth / 2}
+                  y={y}
+                  width={barWidth}
+                  height={barH}
+                  fill={getColor(idx, item.color)}
+                />
+              </g>
+            );
+          })}
+
+          {/* X-axis labels */}
+          {items.map((item, idx) => {
+            const x = xAt(idx);
+            return (
+              <text
+                key={idx}
+                x={x}
+                y={H - pad.bottom + 16}
+                textAnchor="middle"
+                fontSize={10}
+                fill="#333"
+              >
+                {item.label.length > 12 ? item.label.slice(0, 11) + '…' : item.label}
+              </text>
+            );
+          })}
+        </svg>
       </div>
 
-      {/* X-axis label */}
+      {/* Legend for grouped bars */}
+      {isGrouped && items.length > 0 && (
+        <div className="flex flex-wrap gap-4 justify-center">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2 text-xs">
+              <div
+                className="w-4 h-3"
+                style={{ backgroundColor: getColor(idx, item.color) }}
+              />
+              <span className="text-foreground">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {data.xAxisLabel && (
-        <div className="text-xs text-muted-foreground text-center mt-2">{data.xAxisLabel}</div>
+        <div className="text-xs text-muted-foreground text-center">{data.xAxisLabel}</div>
       )}
     </div>
   );
 }
 
-// Line Graph Renderer (SVG-based for accurate lines + readable labels)
+
+// Line Graph Renderer (IELTS-style: thick lines, distinct colors, percentage Y-axis, grid lines)
 function LineGraphRenderer({
   data,
   getColor,
@@ -223,9 +333,12 @@ function LineGraphRenderer({
   const allY = allPoints.map((p) => p.y);
   const minY = Math.min(...allY);
   const maxY = Math.max(...allY);
-  const yPad = Math.max(1, Math.round((maxY - minY) * 0.08));
-  const yMin = minY - yPad;
-  const yMax = maxY + yPad;
+  
+  // Round to nice tick values (0, 10, 20... or 0, 20, 40...)
+  const rawMin = Math.floor(minY / 10) * 10;
+  const rawMax = Math.ceil(maxY / 10) * 10;
+  const yMin = Math.max(0, rawMin - 10);
+  const yMax = rawMax + 10;
   const yRange = yMax - yMin || 1;
 
   // Use x labels from the longest series
@@ -233,9 +346,9 @@ function LineGraphRenderer({
     .sort((a, b) => (b.data?.length || 0) - (a.data?.length || 0))[0]
     ?.data.map((d) => String(d.x)) ?? [];
 
-  const W = 720;
-  const H = 320;
-  const pad = { left: 56, right: 18, top: 14, bottom: 46 };
+  const W = 600;
+  const H = 340;
+  const pad = { left: 56, right: 130, top: 20, bottom: 50 };
   const innerW = W - pad.left - pad.right;
   const innerH = H - pad.top - pad.bottom;
 
@@ -245,13 +358,12 @@ function LineGraphRenderer({
   const xAt = (i: number) => pad.left + i * xStep;
   const yAt = (y: number) => pad.top + (1 - (y - yMin) / yRange) * innerH;
 
-  const yTicks = 4;
-  const tickValues = Array.from({ length: yTicks + 1 }, (_, i) => {
-    const t = i / yTicks;
-    return yMax - t * yRange;
-  });
-
-  const xLabelEvery = xLabels.length <= 6 ? 1 : xLabels.length <= 10 ? 2 : 3;
+  // Y-axis ticks: 0%, 10%, 20%... up to max
+  const tickStep = yRange <= 50 ? 10 : 20;
+  const tickValues: number[] = [];
+  for (let v = yMin; v <= yMax; v += tickStep) {
+    tickValues.push(v);
+  }
 
   return (
     <div className="space-y-3">
@@ -269,7 +381,7 @@ function LineGraphRenderer({
           aria-label={data.title || 'Line graph'}
           preserveAspectRatio="xMidYMid meet"
         >
-          {/* Grid + Y ticks */}
+          {/* Horizontal grid lines + Y-axis labels */}
           {tickValues.map((v, idx) => {
             const y = yAt(v);
             return (
@@ -279,20 +391,35 @@ function LineGraphRenderer({
                   y1={y}
                   x2={W - pad.right}
                   y2={y}
-                  stroke="hsl(var(--border))"
-                  strokeOpacity={0.5}
-                  strokeWidth={1}
+                  stroke="#333"
+                  strokeWidth={0.5}
                 />
                 <text
                   x={pad.left - 10}
                   y={y + 4}
                   textAnchor="end"
                   fontSize={12}
-                  fill="hsl(var(--muted-foreground))"
+                  fill="#333"
                 >
-                  {Math.round(v)}
+                  {v}%
                 </text>
               </g>
+            );
+          })}
+
+          {/* Vertical grid lines at each X point */}
+          {xLabels.map((_, i) => {
+            const x = xAt(i);
+            return (
+              <line
+                key={i}
+                x1={x}
+                y1={pad.top}
+                x2={x}
+                y2={H - pad.bottom}
+                stroke="#ccc"
+                strokeWidth={0.5}
+              />
             );
           })}
 
@@ -302,23 +429,22 @@ function LineGraphRenderer({
             y1={pad.top}
             x2={pad.left}
             y2={H - pad.bottom}
-            stroke="hsl(var(--border))"
-            strokeWidth={1.2}
+            stroke="#333"
+            strokeWidth={1.5}
           />
           <line
             x1={pad.left}
             y1={H - pad.bottom}
             x2={W - pad.right}
             y2={H - pad.bottom}
-            stroke="hsl(var(--border))"
-            strokeWidth={1.2}
+            stroke="#333"
+            strokeWidth={1.5}
           />
 
           {/* X labels */}
           {xLabels.map((label, i) => {
-            if (i % xLabelEvery !== 0) return null;
             const x = xAt(i);
-            const y = H - pad.bottom + 18;
+            const y = H - pad.bottom + 22;
             return (
               <text
                 key={i}
@@ -326,14 +452,15 @@ function LineGraphRenderer({
                 y={y}
                 textAnchor="middle"
                 fontSize={12}
-                fill="hsl(var(--muted-foreground))"
+                fontWeight={500}
+                fill="#333"
               >
                 {label}
               </text>
             );
           })}
 
-          {/* Series */}
+          {/* Series - thick lines with distinct colors */}
           {series.map((s, sIdx) => {
             const color = getColor(sIdx, s.color);
             const pts = s.data
@@ -350,40 +477,56 @@ function LineGraphRenderer({
 
             return (
               <g key={sIdx}>
-                <path d={d} fill="none" stroke={color} strokeWidth={2.5} />
+                <path d={d} fill="none" stroke={color} strokeWidth={3} />
                 {pts.map((p, idx) => (
                   <circle
                     key={idx}
                     cx={p.x}
                     cy={p.y}
-                    r={4}
+                    r={5}
                     fill={color}
-                    stroke="hsl(var(--background))"
+                    stroke="#fff"
                     strokeWidth={2}
                   >
-                    <title>{`${s.name}: ${p.raw.y}`}</title>
+                    <title>{`${s.name}: ${p.raw.y}%`}</title>
                   </circle>
                 ))}
               </g>
             );
           })}
+
+          {/* Legend - on right side like official IELTS */}
+          {series.length > 0 && (
+            <g>
+              {series.map((s, idx) => {
+                const y = pad.top + 40 + idx * 28;
+                const color = getColor(idx, s.color);
+                return (
+                  <g key={idx}>
+                    <line
+                      x1={W - pad.right + 20}
+                      y1={y}
+                      x2={W - pad.right + 45}
+                      y2={y}
+                      stroke={color}
+                      strokeWidth={3}
+                    />
+                    <text
+                      x={W - pad.right + 50}
+                      y={y + 4}
+                      fontSize={12}
+                      fontWeight={500}
+                      fill={color}
+                    >
+                      {s.name}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          )}
         </svg>
       </div>
-
-      {/* Legend */}
-      {series.length > 1 && (
-        <div className="flex flex-wrap gap-3 justify-center">
-          {series.map((s, idx) => (
-            <div key={idx} className="flex items-center gap-1 text-xs">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: getColor(idx, s.color) }}
-              />
-              <span className="text-muted-foreground">{s.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {data.xAxisLabel && (
         <div className="text-xs text-muted-foreground text-center">{data.xAxisLabel}</div>
@@ -760,7 +903,7 @@ function MapRenderer({ data }: { data: IELTSChartData }) {
   return <div className="text-center text-muted-foreground text-sm">Map configuration not recognized</div>;
 }
 
-// Mixed Charts Renderer
+// Mixed Charts Renderer (IELTS-style: stacked vertically, not side-by-side)
 function MixedChartsRenderer({
   data,
   getColor,
@@ -775,11 +918,11 @@ function MixedChartsRenderer({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="flex flex-col gap-6">
       {charts.map((chart, idx) => (
-        <div key={idx} className="border border-border rounded-lg p-3">
+        <div key={idx} className="border border-border rounded-lg p-4 bg-white">
           {chart.title && (
-            <h4 className="text-sm font-medium text-center mb-2">{chart.title}</h4>
+            <h4 className="text-sm font-semibold text-center mb-4 text-gray-800">{chart.title}</h4>
           )}
           {chart.type === 'BAR_CHART' && <BarChartRenderer data={chart} getColor={getColor} />}
           {chart.type === 'LINE_GRAPH' && <LineGraphRenderer data={chart} getColor={getColor} />}
