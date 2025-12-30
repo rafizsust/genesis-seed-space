@@ -24,6 +24,7 @@ import { AILoadingScreen } from '@/components/common/AILoadingScreen';
 import { WritingTestControls } from '@/components/writing/WritingTestControls';
 import { TestStartOverlay } from '@/components/common/TestStartOverlay';
 import { ExitTestConfirmDialog } from '@/components/common/ExitTestConfirmDialog';
+import { SafeSVG } from '@/components/common/SafeSVG';
 import { Clock, Send, PenTool, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -280,14 +281,23 @@ export default function AIPracticeWritingTest() {
                 </p>
               </div>
               
-              {/* Task 1: Show image first if available (as in real IELTS) */}
-              {task.task_type === 'task1' && task.image_base64 && (
+              {/* Task 1: Show visual first if available (as in real IELTS) */}
+              {task.task_type === 'task1' && (task.svgCode || task.image_base64) && (
                 <div className="flex justify-center py-4 border rounded-lg bg-muted/20">
-                  <img 
-                    src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
-                    alt="Task visual" 
-                    className="max-w-full max-h-[250px] object-contain rounded"
-                  />
+                  {task.svgCode ? (
+                    <SafeSVG 
+                      svgCode={task.svgCode} 
+                      fallbackDescription={task.image_description}
+                      maxWidth={400}
+                      maxHeight={250}
+                    />
+                  ) : task.image_base64 ? (
+                    <img 
+                      src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
+                      alt="Task visual" 
+                      className="max-w-full max-h-[250px] object-contain rounded"
+                    />
+                  ) : null}
                 </div>
               )}
               
@@ -339,14 +349,23 @@ export default function AIPracticeWritingTest() {
               </p>
             </div>
             
-            {/* Task 1: Show image first if available (as in real IELTS) */}
-            {task.task_type === 'task1' && task.image_base64 && (
+            {/* Task 1: Show visual first if available (as in real IELTS) */}
+            {task.task_type === 'task1' && (task.svgCode || task.image_base64) && (
               <div className="flex justify-center py-4 border rounded-lg bg-muted/20">
-                <img 
-                  src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
-                  alt="Task visual" 
-                  className="max-w-full max-h-[350px] object-contain rounded"
-                />
+                {task.svgCode ? (
+                  <SafeSVG 
+                    svgCode={task.svgCode} 
+                    fallbackDescription={task.image_description}
+                    maxWidth={500}
+                    maxHeight={350}
+                  />
+                ) : task.image_base64 ? (
+                  <img 
+                    src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
+                    alt="Task visual" 
+                    className="max-w-full max-h-[350px] object-contain rounded"
+                  />
+                ) : null}
               </div>
             )}
             

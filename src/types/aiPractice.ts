@@ -168,7 +168,8 @@ export interface GeneratedWritingSingleTask {
   task_type: 'task1' | 'task2';
   instruction: string;
   text_content?: string;
-  image_base64?: string; // For Task 1 charts/graphs
+  image_base64?: string; // For Task 1 charts/graphs (legacy)
+  svgCode?: string; // For Task 1 charts/graphs (SVG format - preferred)
   image_description?: string;
   visual_type?: string; // Type of visual for Task 1
   word_limit_min: number;

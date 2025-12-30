@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { SafeSVG } from '@/components/common/SafeSVG';
 
 interface MapLabel {
   id: string; // e.g., "A", "B", "C" (answer positions - NOT labeled on map)
@@ -26,6 +27,7 @@ interface MapLabelingTableProps {
   onQuestionFocus?: (questionNumber: number) => void;
   fontSize?: number;
   imageUrl?: string;
+  svgCode?: string; // SVG code for direct rendering
 }
 
 /**
@@ -44,6 +46,7 @@ export function MapLabelingTable({
   onQuestionFocus,
   fontSize = 14,
   imageUrl,
+  svgCode,
 }: MapLabelingTableProps) {
   // Get unique letters from labels (sorted) - these are answer position columns
   const letterColumns = [...mapLabels].sort((a, b) => a.id.localeCompare(b.id)).map(l => l.id);
@@ -70,7 +73,15 @@ export function MapLabelingTable({
       {/* Left: Map with answer positions and landmarks */}
       <div className="flex-shrink-0 w-full lg:w-1/2 lg:max-w-[500px]">
         <div className="relative border border-border rounded-lg overflow-hidden bg-muted/30">
-          {imageUrl ? (
+          {svgCode ? (
+            <SafeSVG 
+              svgCode={svgCode}
+              fallbackDescription={mapDescription}
+              maxWidth={500}
+              maxHeight={400}
+              className="w-full"
+            />
+          ) : imageUrl ? (
             <img
               src={imageUrl}
               alt="Map diagram for labeling"

@@ -924,6 +924,7 @@ export function ReadingQuestions({
                           onQuestionFocus={setCurrentQuestion}
                           fontSize={fontSize}
                           imageUrl={imageUrl}
+                          svgCode={groupOptions?.svgCode}
                         />
                       );
                     }

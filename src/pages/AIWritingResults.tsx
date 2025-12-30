@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { SafeSVG } from '@/components/common/SafeSVG';
 import {
   RotateCcw,
   Home,
@@ -70,6 +71,7 @@ interface WritingResult {
   task1_text?: string;
   task2_text?: string;
   task1_image_base64?: string;
+  task1_svg_code?: string; // SVG code for Task 1 visual
   task1_visual_type?: string;
   created_at: string;
 }
@@ -160,6 +162,7 @@ export default function AIWritingResults() {
 
       const payload = testRow?.payload as any;
       const task1ImageBase64 = payload?.writingTask?.task1?.image_base64 || payload?.writingTask?.image_base64;
+      const task1SvgCode = payload?.writingTask?.task1?.svgCode || payload?.writingTask?.svgCode;
       const task1VisualType = payload?.writingTask?.task1?.visual_type || payload?.writingTask?.visual_type;
 
       // Load the result
@@ -197,6 +200,7 @@ export default function AIWritingResults() {
         task1_text: answers?.['1'] || answers?.task1,
         task2_text: answers?.['2'] || answers?.task2,
         task1_image_base64: task1ImageBase64,
+        task1_svg_code: task1SvgCode,
         task1_visual_type: task1VisualType,
         created_at: data.completed_at,
       });
@@ -354,8 +358,8 @@ export default function AIWritingResults() {
           </div>
         )}
 
-        {/* Task 1 Image Context */}
-        {isTask1 && result.task1_image_base64 && (
+        {/* Task 1 Visual Context */}
+        {isTask1 && (result.task1_svg_code || result.task1_image_base64) && (
           <Card className="mb-4">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
@@ -365,13 +369,22 @@ export default function AIWritingResults() {
             </CardHeader>
             <CardContent>
               <div className="flex justify-center">
-                <img
-                  src={result.task1_image_base64.startsWith('data:') 
-                    ? result.task1_image_base64 
-                    : `data:image/png;base64,${result.task1_image_base64}`}
-                  alt="Task 1 Visual"
-                  className="max-w-full max-h-[300px] object-contain rounded border"
-                />
+                {result.task1_svg_code ? (
+                  <SafeSVG 
+                    svgCode={result.task1_svg_code}
+                    fallbackDescription={`${result.task1_visual_type?.replace(/_/g, ' ') || 'Visual'} diagram`}
+                    maxWidth={500}
+                    maxHeight={300}
+                  />
+                ) : result.task1_image_base64 ? (
+                  <img
+                    src={result.task1_image_base64.startsWith('data:') 
+                      ? result.task1_image_base64 
+                      : `data:image/png;base64,${result.task1_image_base64}`}
+                    alt="Task 1 Visual"
+                    className="max-w-full max-h-[300px] object-contain rounded border"
+                  />
+                ) : null}
               </div>
             </CardContent>
           </Card>

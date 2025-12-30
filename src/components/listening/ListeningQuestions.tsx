@@ -270,6 +270,7 @@ export function ListeningQuestions({
                   onQuestionFocus={setCurrentQuestion}
                   fontSize={fontSize}
                   imageUrl={group.options.imageUrl}
+                  svgCode={group.options.svgCode}
                 />
               </div>
             )}
