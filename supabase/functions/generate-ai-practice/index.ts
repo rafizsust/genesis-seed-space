@@ -361,199 +361,14 @@ function extractJsonFromResponse(text: string): string {
 }
 
 // ============================================================================
-// CHART DATA GENERATION (JSON-based, replaces SVG generation)
+// CHART DATA GENERATION - REMOVED
 // ============================================================================
-
-// Generate chart data as JSON for Writing Task 1 visuals
-// Returns structured JSON that the frontend renders using CSS
-async function generateChartData(
-  visualType: string,
-  visualDescription: string,
-  dataDescription: string,
-  geminiApiKey: string
-): Promise<object | null> {
-  if (!geminiApiKey) {
-    console.error('Gemini API key not provided for chart data generation');
-    return null;
-  }
-
-  console.log(`Generating JSON chart data for ${visualType}...`);
-
-  // Build type-specific prompt for compact JSON output
-  let chartPrompt = '';
-  
-  switch (visualType?.toUpperCase()) {
-    case 'BAR_CHART':
-      chartPrompt = `Generate minified JSON for a bar chart.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure (no markdown, no explanation):
-{"type":"BAR_CHART","title":"[short title]","xAxisLabel":"[label]","yAxisLabel":"[label]","data":[{"label":"[item]","value":[number]},{"label":"[item]","value":[number]}]}
-
-Use 4-6 data items with realistic values. Keep labels SHORT (max 15 chars).`;
-      break;
-
-    case 'LINE_GRAPH':
-      chartPrompt = `Generate minified JSON for a line graph.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"LINE_GRAPH","title":"[short title]","xAxisLabel":"[label]","yAxisLabel":"[label]","series":[{"name":"[series name]","data":[{"x":"[point]","y":[value]},{"x":"[point]","y":[value]}]}]}
-
-Use 5-7 x-axis points. Keep names SHORT.`;
-      break;
-
-    case 'PIE_CHART':
-      chartPrompt = `Generate minified JSON for a pie chart.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"PIE_CHART","title":"[short title]","data":[{"label":"[segment]","value":[percent as whole number]},{"label":"[segment]","value":[percent]}]}
-
-Use 4-6 segments. Values should sum to 100. Keep labels SHORT.`;
-      break;
-
-    case 'TABLE':
-      chartPrompt = `Generate minified JSON for a data table.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"TABLE","title":"[short title]","headers":["Header1","Header2","Header3"],"rows":[[{"value":"cell1"},{"value":"cell2"},{"value":"cell3"}],[{"value":"cell1"},{"value":"cell2"},{"value":"cell3"}]]}
-
-Use 3-4 columns and 4-5 rows. Keep values SHORT.`;
-      break;
-
-    case 'PROCESS_DIAGRAM':
-      chartPrompt = `Generate minified JSON for a process diagram.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"PROCESS_DIAGRAM","title":"[short title]","steps":[{"label":"[step name]","description":"[brief desc]"},{"label":"[step name]","description":"[brief desc]"}]}
-
-Use 4-6 steps. Keep descriptions under 50 chars.`;
-      break;
-
-    case 'MAP':
-      chartPrompt = `Generate minified JSON for a map comparison.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"MAP","title":"[short title]","mapData":{"before":{"year":"[year]","features":[{"label":"[feature]","type":"building"},{"label":"[feature]","type":"road"}]},"after":{"year":"[year]","features":[{"label":"[new feature]","type":"building"},{"label":"[feature]","type":"park"}]}}}
-
-Types: building, road, park, water, other. Use 4-6 features per map.`;
-      break;
-
-    case 'MIXED_CHARTS':
-      chartPrompt = `Generate minified JSON for two related charts.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"MIXED_CHARTS","title":"[overall title]","charts":[{"type":"BAR_CHART","title":"[chart1 title]","data":[{"label":"A","value":50},{"label":"B","value":30}]},{"type":"PIE_CHART","title":"[chart2 title]","data":[{"label":"X","value":60},{"label":"Y","value":40}]}]}
-
-Use simple data for each chart.`;
-      break;
-
-    default:
-      // Default to bar chart
-      chartPrompt = `Generate minified JSON for a bar chart.
-DATA: ${visualDescription} ${dataDescription}
-
-Return ONLY this exact JSON structure:
-{"type":"BAR_CHART","title":"[short title]","data":[{"label":"[item]","value":[number]}]}
-
-Use 4-6 data items. Keep labels SHORT.`;
-  }
-
-  // Add universal instructions
-  chartPrompt += `
-
-CRITICAL RULES:
-- Output ONLY the JSON object, nothing else
-- No markdown code blocks, no explanation text
-- Keep total response under 200 characters if possible
-- Use whole numbers for values
-- Keep all text labels SHORT (max 15 characters)`;
-
-  // Retry logic for 429 rate limit errors
-  const maxRetries = 1;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      if (attempt > 0) {
-        console.log(`Retry attempt ${attempt} for chart data generation...`);
-      }
-      
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: chartPrompt }] }],
-            generationConfig: {
-              temperature: 0.3, // Low temp for consistent JSON
-              maxOutputTokens: 500, // Much smaller than SVG needed
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorStatus = response.status;
-        console.error(`Chart data generation failed: ${errorStatus}`);
-        
-        // If 429 rate limit and we have retries left, wait 5 seconds and retry
-        if (errorStatus === 429 && attempt < maxRetries) {
-          console.log('Rate limit (429) hit for chart data, waiting 5 seconds before retry...');
-          await sleep(5000);
-          continue;
-        }
-        
-        return null;
-      }
-
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!text) {
-        console.error('Empty response from Gemini for chart data');
-        return null;
-      }
-
-      console.log(`Chart data response: ${text.length} chars`);
-      console.log(`Raw response: ${text.substring(0, 300)}`);
-
-      // Extract JSON from response
-      const jsonStr = extractJsonFromResponse(text);
-      const chartData = JSON.parse(jsonStr);
-      
-      // Validate required fields
-      if (!chartData.type) {
-        console.error('Chart data missing type field');
-        return null;
-      }
-
-      console.log(`Chart data generated successfully: ${chartData.type}`);
-      return chartData;
-
-    } catch (err) {
-      console.error(`Chart data generation error (attempt ${attempt}):`, err);
-      if (attempt < maxRetries) {
-        console.log('Retrying after error...');
-        await sleep(3000);
-        continue;
-      }
-      return null;
-    }
-  }
-  
-  console.error('All chart data generation attempts failed');
-  return null;
-}
-
-// Note: Old SVG generation functions (mergeTruncatedSvg, generateMapSvg, 
-// generateFlowchartSvg, generateWritingTask1Svg) have been removed.
-// Chart data is now generated as JSON using generateChartData() above.
+// Chart data is now generated inline with the writing task prompt using 
+// Gemini's JSON mode (response_mime_type: "application/json").
+// This combines the essay prompt and visual data in ONE API call to prevent
+// truncation and rate limiting issues.
+// Old functions removed: generateChartData, mergeTruncatedSvg, generateMapSvg,
+// generateFlowchartSvg, generateWritingTask1Svg
 
 async function uploadGeneratedImage(
   supabaseClient: any, 
@@ -2325,7 +2140,9 @@ serve(async (req) => {
       // Track total tokens used for quota tracking
       let writingTotalTokensUsed = 0;
 
-      // Helper function to generate a single task
+      // Helper function to generate a single task using JSON mode
+      // CRITICAL: Uses response_mime_type: "application/json" for stable JSON output
+      // Combines essay prompt and visual data in ONE API call to prevent truncation
       async function generateSingleWritingTask(
         taskNum: 1 | 2,
         visualType: string,
@@ -2333,34 +2150,139 @@ serve(async (req) => {
       ): Promise<any> {
         const isTask1 = taskNum === 1;
         
-        // Build prompt based on task type
+        // Build prompt based on task type - COMBINED prompt for Task 1
         let writingPrompt: string;
         
         if (isTask1) {
           const visualTypeToUse = visualType === 'RANDOM' 
             ? ['BAR_CHART', 'LINE_GRAPH', 'PIE_CHART', 'TABLE', 'PROCESS_DIAGRAM'][Math.floor(Math.random() * 5)]
             : visualType;
+          
+          // Build the chart data structure based on visual type
+          let chartDataSchema = '';
+          switch (visualTypeToUse) {
+            case 'BAR_CHART':
+              chartDataSchema = `"visualData": {
+        "type": "BAR_CHART",
+        "title": "[short descriptive title, max 40 chars]",
+        "xAxisLabel": "[x-axis label]",
+        "yAxisLabel": "[y-axis label]",
+        "data": [
+          {"label": "[item1, max 15 chars]", "value": [number]},
+          {"label": "[item2]", "value": [number]},
+          {"label": "[item3]", "value": [number]},
+          {"label": "[item4]", "value": [number]}
+        ]
+      }`;
+              break;
+            case 'LINE_GRAPH':
+              chartDataSchema = `"visualData": {
+        "type": "LINE_GRAPH",
+        "title": "[short descriptive title]",
+        "xAxisLabel": "[x-axis label]",
+        "yAxisLabel": "[y-axis label]",
+        "series": [
+          {
+            "name": "[series name, max 15 chars]",
+            "data": [
+              {"x": "[point1]", "y": [value]},
+              {"x": "[point2]", "y": [value]},
+              {"x": "[point3]", "y": [value]},
+              {"x": "[point4]", "y": [value]},
+              {"x": "[point5]", "y": [value]}
+            ]
+          }
+        ]
+      }`;
+              break;
+            case 'PIE_CHART':
+              chartDataSchema = `"visualData": {
+        "type": "PIE_CHART",
+        "title": "[short descriptive title]",
+        "data": [
+          {"label": "[segment1, max 15 chars]", "value": [percentage as whole number]},
+          {"label": "[segment2]", "value": [percentage]},
+          {"label": "[segment3]", "value": [percentage]},
+          {"label": "[segment4]", "value": [percentage]}
+        ]
+      }`;
+              break;
+            case 'TABLE':
+              chartDataSchema = `"visualData": {
+        "type": "TABLE",
+        "title": "[short descriptive title]",
+        "headers": ["[Header1]", "[Header2]", "[Header3]"],
+        "rows": [
+          [{"value": "[cell1]"}, {"value": "[cell2]"}, {"value": "[cell3]"}],
+          [{"value": "[cell1]"}, {"value": "[cell2]"}, {"value": "[cell3]"}],
+          [{"value": "[cell1]"}, {"value": "[cell2]"}, {"value": "[cell3]"}]
+        ]
+      }`;
+              break;
+            case 'PROCESS_DIAGRAM':
+              chartDataSchema = `"visualData": {
+        "type": "PROCESS_DIAGRAM",
+        "title": "[short descriptive title]",
+        "steps": [
+          {"label": "[step1 name]", "description": "[brief desc, max 50 chars]"},
+          {"label": "[step2 name]", "description": "[brief desc]"},
+          {"label": "[step3 name]", "description": "[brief desc]"},
+          {"label": "[step4 name]", "description": "[brief desc]"}
+        ]
+      }`;
+              break;
+            case 'MAP':
+              chartDataSchema = `"visualData": {
+        "type": "MAP",
+        "title": "[short descriptive title]",
+        "mapData": {
+          "before": {
+            "year": "[year]",
+            "features": [
+              {"label": "[feature1]", "type": "building"},
+              {"label": "[feature2]", "type": "road"}
+            ]
+          },
+          "after": {
+            "year": "[year]",
+            "features": [
+              {"label": "[feature1]", "type": "building"},
+              {"label": "[feature2]", "type": "park"}
+            ]
+          }
+        }
+      }`;
+              break;
+            default:
+              chartDataSchema = `"visualData": {
+        "type": "BAR_CHART",
+        "title": "[short title]",
+        "data": [{"label": "[item]", "value": [number]}]
+      }`;
+          }
             
-          writingPrompt = `Generate an IELTS Academic Writing Task 1.
+          writingPrompt = `You are a data analyst. Generate an IELTS Academic Writing Task 1 with BOTH the essay question AND the chart data.
+
 Topic: ${topic}
 Difficulty: ${difficulty}
 Visual Type: ${visualTypeToUse}
 
-Create a realistic ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} with specific data that a student would describe.
+CRITICAL INSTRUCTIONS:
+1. Create a realistic ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} with specific numeric data
+2. The instruction must start with "The ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} below shows..."
+3. Include: "Summarise the information by selecting and reporting the main features, and make comparisons where relevant."
+4. End with: "Write at least 150 words."
+5. The visualData field must contain realistic numeric data that matches your instruction
 
-IMPORTANT: The instruction must follow official IELTS format exactly:
-- Start with a description of what the visual shows (e.g., "The bar chart below shows...")
-- Then include: "Summarise the information by selecting and reporting the main features, and make comparisons where relevant."
-- End with: "Write at least 150 words."
-
-Return ONLY valid JSON:
+Return this EXACT JSON structure:
 {
   "task_type": "task1",
-  "instruction": "The ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} below shows [specific description of data]. Summarise the information by selecting and reporting the main features, and make comparisons where relevant. Write at least 150 words.",
-  "visual_description": "Detailed description of what the visual shows including specific data points, trends, percentages etc. for AI image generation.",
+  "instruction": "The ${visualTypeToUse.replace(/_/g, ' ').toLowerCase()} below shows [specific description]. Summarise the information by selecting and reporting the main features, and make comparisons where relevant. Write at least 150 words.",
   "visual_type": "${visualTypeToUse}",
-  "data_description": "Precise data to be shown in the image (e.g., 'The bar chart shows sales figures for 5 products: Product A - 50 units, Product B - 30 units, Product C - 20 units, Product D - 15 units, Product E - 10 units in 2024')"
-}`;
+  ${chartDataSchema}
+}
+
+IMPORTANT: Use whole numbers. Keep all labels under 15 characters. The data must be coherent with the instruction.`;
         } else {
           const essayTypeToUse = essayType === 'RANDOM'
             ? ['OPINION', 'DISCUSSION', 'PROBLEM_SOLUTION', 'ADVANTAGES_DISADVANTAGES', 'TWO_PART_QUESTION'][Math.floor(Math.random() * 5)]
@@ -2386,7 +2308,7 @@ IMPORTANT: The instruction must follow official IELTS format exactly:
 - Include: "Give reasons for your answer and include any relevant examples from your own knowledge or experience."
 - End with: "Write at least 250 words."
 
-Return ONLY valid JSON:
+Return this EXACT JSON structure:
 {
   "task_type": "task2",
   "instruction": "[Context statement about the topic]. [Main argument or question]. ${essayFormatGuide[essayTypeToUse as keyof typeof essayFormatGuide] || ''} Give reasons for your answer and include any relevant examples from your own knowledge or experience. Write at least 250 words.",
@@ -2394,47 +2316,66 @@ Return ONLY valid JSON:
 }`;
         }
 
-        const result = await callGemini(geminiApiKey, writingPrompt);
-        // Track tokens from this call
-        writingTotalTokensUsed += getLastTokensUsed();
+        // Use Gemini with JSON mode for stable, non-truncated output
+        console.log(`Generating Task ${taskNum} with JSON mode...`);
         
-        if (!result) {
-          throw new Error(`Failed to generate Task ${taskNum}`);
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: writingPrompt }] }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 2048,
+                responseMimeType: 'application/json', // Force JSON mode
+              },
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Task ${taskNum} generation failed:`, response.status, errorText);
+          throw new Error(`Failed to generate Task ${taskNum}: ${response.status}`);
         }
 
+        const data = await response.json();
+        
+        // Track token usage
+        const usageMetadata = data.usageMetadata;
+        if (usageMetadata) {
+          const promptTokens = usageMetadata.promptTokenCount || 0;
+          const candidateTokens = usageMetadata.candidatesTokenCount || 0;
+          writingTotalTokensUsed += promptTokens + candidateTokens;
+          console.log(`Task ${taskNum} tokens - Prompt: ${promptTokens}, Output: ${candidateTokens}`);
+        }
+        
+        const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!resultText) {
+          throw new Error(`Empty response for Task ${taskNum}`);
+        }
+        
+        console.log(`Task ${taskNum} response length: ${resultText.length} chars`);
+
         try {
-          const jsonStr = extractJsonFromResponse(result);
-          const parsed = JSON.parse(jsonStr);
-          
-          // For Task 1, generate chart data as JSON (not SVG)
-          // Add 3-second cooldown before chart data call to prevent 429 rate limit
-          let chartData: object | null = null;
-          if (isTask1 && parsed.visual_description) {
-            console.log(`Waiting 3 seconds before chart data call to prevent rate limiting...`);
-            await sleep(3000);
-            
-            console.log(`Generating chart data for Task 1: ${parsed.visual_type}`);
-            chartData = await generateChartData(
-              parsed.visual_type || visualType,
-              parsed.visual_description,
-              parsed.data_description || '',
-              geminiApiKey
-            );
-          }
+          // With JSON mode, the response should be valid JSON directly
+          const parsed = JSON.parse(resultText);
           
           return {
             id: crypto.randomUUID(),
             task_type: isTask1 ? 'task1' : 'task2',
             instruction: parsed.instruction,
-            image_description: parsed.visual_description,
-            chartData: chartData, // JSON chart data for frontend rendering
+            image_description: parsed.visual_description || parsed.instruction, // Fallback
+            chartData: parsed.visualData || null, // Direct from combined response
             visual_type: parsed.visual_type,
             essay_type: parsed.essay_type,
             word_limit_min: isTask1 ? 150 : 250,
             word_limit_max: isTask1 ? 200 : 350,
           };
         } catch (e) {
-          console.error(`Failed to parse Task ${taskNum} response:`, e, result?.substring(0, 500));
+          console.error(`Failed to parse Task ${taskNum} JSON:`, e, resultText?.substring(0, 500));
           throw new Error(`Failed to parse Task ${taskNum} content`);
         }
       }
@@ -2447,13 +2388,9 @@ Return ONLY valid JSON:
         );
 
         if (isFullTest) {
-          // Generate both tasks SEQUENTIALLY to avoid rate limiting
-          // Do NOT use Promise.all - API calls must be spaced out
-          console.log('Generating full writing test - Task 1 first...');
+          // Generate both tasks sequentially - each task is now a single API call
+          console.log('Generating full writing test - Task 1...');
           const task1Result = await generateSingleWritingTask(1, task1VisualType, task2EssayType);
-          
-          console.log('Waiting 3 seconds before Task 2 to prevent rate limiting...');
-          await sleep(3000);
           
           console.log('Generating Task 2...');
           const task2Result = await generateSingleWritingTask(2, task1VisualType, task2EssayType);
