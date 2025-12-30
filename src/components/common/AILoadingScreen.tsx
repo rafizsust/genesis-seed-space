@@ -3,6 +3,8 @@ import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FlashcardQuickPractice } from './FlashcardQuickPractice';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 // Fun IELTS-related facts and tips to display during loading
 const IELTS_FUN_FACTS = [
@@ -42,11 +44,38 @@ export function AILoadingScreen({
   estimatedSeconds,
   onAbort,
 }: AILoadingScreenProps) {
+  const { user } = useAuth();
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentFactIndex, setCurrentFactIndex] = useState(() => 
     Math.floor(Math.random() * IELTS_FUN_FACTS.length)
   );
-  const [hasFlashcards] = useState<boolean | null>(null);
+  const [hasFlashcards, setHasFlashcards] = useState<boolean | null>(null);
+
+  // Check if user has non-mastered flashcards
+  useEffect(() => {
+    const checkFlashcards = async () => {
+      if (!user) {
+        setHasFlashcards(false);
+        return;
+      }
+
+      try {
+        const { count, error } = await supabase
+          .from('flashcard_cards')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('status', ['learning', 'reviewing']);
+
+        if (error) throw error;
+        setHasFlashcards((count ?? 0) > 0);
+      } catch (err) {
+        console.error('Error checking flashcards:', err);
+        setHasFlashcards(false);
+      }
+    };
+
+    checkFlashcards();
+  }, [user]);
 
   // Timer to track elapsed time
   useEffect(() => {
@@ -159,11 +188,12 @@ export function AILoadingScreen({
 
         {/* Flashcard Practice OR Fun Fact */}
         <div className="mt-4">
-          <FlashcardQuickPractice 
-            className={hasFlashcards === false ? 'hidden' : ''} 
-          />
+          {/* Show flashcards only if user has non-mastered cards */}
+          {hasFlashcards === true && (
+            <FlashcardQuickPractice />
+          )}
           
-          {/* Show tips if no flashcards */}
+          {/* Show tips if no flashcards or all are mastered */}
           {hasFlashcards === false && (
             <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <p className="text-sm text-foreground animate-fade-in" key={currentFactIndex}>
@@ -172,7 +202,7 @@ export function AILoadingScreen({
             </div>
           )}
           
-          {/* Initially show tips until we know if user has flashcards */}
+          {/* Show loading placeholder while checking */}
           {hasFlashcards === null && (
             <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <p className="text-sm text-foreground animate-fade-in" key={currentFactIndex}>

@@ -147,7 +147,7 @@ export function FlashcardQuickPractice({ className }: FlashcardQuickPracticeProp
 
       {/* Flashcard */}
       <div 
-        className="relative h-32 cursor-pointer perspective-1000 mb-3"
+        className="relative h-36 cursor-pointer perspective-1000 mb-3"
         onClick={() => setIsFlipped(!isFlipped)}
       >
         <div className={cn(
@@ -156,10 +156,10 @@ export function FlashcardQuickPractice({ className }: FlashcardQuickPracticeProp
         )}>
           {/* Front */}
           <Card className={cn(
-            "absolute inset-0 backface-hidden flex items-center justify-center",
+            "absolute inset-0 backface-hidden flex items-center justify-center overflow-hidden",
             "bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20"
           )}>
-            <CardContent className="text-center p-3">
+            <CardContent className="text-center p-3 w-full h-full flex flex-col items-center justify-center relative">
               <Badge 
                 variant="outline" 
                 className={cn(
@@ -171,18 +171,18 @@ export function FlashcardQuickPractice({ className }: FlashcardQuickPracticeProp
                 {currentCard.status === 'learning' ? <Brain className="w-2.5 h-2.5 mr-1" /> : null}
                 {currentCard.status}
               </Badge>
-              <p className="text-lg font-bold">{currentCard.word}</p>
+              <p className="text-base font-bold line-clamp-2 px-2">{currentCard.word}</p>
               <p className="text-[10px] text-muted-foreground mt-1">Tap to reveal</p>
             </CardContent>
           </Card>
 
           {/* Back */}
           <Card className={cn(
-            "absolute inset-0 backface-hidden rotate-y-180 flex items-center justify-center",
+            "absolute inset-0 backface-hidden rotate-y-180 flex items-center justify-center overflow-hidden",
             "bg-gradient-to-br from-accent/5 to-primary/5 border-accent/20"
           )}>
-            <CardContent className="text-center p-3">
-              <p className="text-base font-medium">{currentCard.meaning}</p>
+            <CardContent className="text-center p-3 w-full h-full flex items-center justify-center overflow-y-auto">
+              <p className="text-sm font-medium line-clamp-4 px-2">{currentCard.meaning}</p>
             </CardContent>
           </Card>
         </div>

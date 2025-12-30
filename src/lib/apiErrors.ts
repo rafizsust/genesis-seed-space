@@ -140,22 +140,22 @@ function titleForKind(kind: ApiErrorKind): string {
   }
 }
 
-function descriptionForKind(kind: ApiErrorKind): string {
+function descriptionForKind(kind: ApiErrorKind, customMessage?: string): string {
   switch (kind) {
     case "quota":
-      return "Your Gemini API has reached its rate/quota limit. Please wait a few minutes and try again, or check your Google AI Studio billing/usage.";
+      return customMessage || "Your Gemini API has reached its rate/quota limit. This may include usage from other platforms (Google AI Studio, other apps). Please wait a few minutes and try again.";
     case "rate_limited":
-      return "You’re sending requests too quickly. Please wait a moment and try again.";
+      return customMessage || "You're sending requests too quickly. Please wait a moment and try again.";
     case "credits":
       return "AI credits are exhausted. Please add credits to continue.";
     case "invalid_key":
-      return "Your Gemini API key is missing or invalid. Please update it in Settings.";
+      return customMessage || "Your Gemini API key is missing or invalid. Please update it in Settings.";
     case "key_suspended":
       return "Your Gemini API key appears suspended/disabled. Please replace it in Settings or re-enable it in Google AI Studio.";
     case "permission_denied":
-      return "Your API key doesn’t have permission to use this feature/model. Please check your Google AI Studio project settings.";
+      return customMessage || "Your API key doesn't have permission to use this feature/model. Please check your Google AI Studio project settings.";
     case "network":
-      return "We couldn’t reach the AI service. Check your internet connection and try again.";
+      return "We couldn't reach the AI service. Check your internet connection and try again.";
     case "unauthorized":
       return "Your session is not authorized. Please sign in again and retry.";
     default:
@@ -187,11 +187,24 @@ export function describeApiError(err: unknown): ApiErrorDescriptor {
 
   const kind = inferKind(combinedForDetect.toLowerCase(), safeString(embedded).toLowerCase());
 
-  // If edge function returned a very specific message (e.g., "SUBMISSION_NOT_FOUND"), keep it as debug only.
+  // Extract custom message from edge function if available
+  let customMessage: string | undefined;
+  if (embedded && typeof embedded === "object") {
+    const embeddedObj = embedded as any;
+    if (embeddedObj.userMessage) {
+      customMessage = embeddedObj.userMessage;
+    } else if (embeddedObj.error && typeof embeddedObj.error === 'string') {
+      // Check for specific error patterns
+      if (embeddedObj.error.includes('QUOTA_EXCEEDED')) {
+        customMessage = embeddedObj.error.replace('QUOTA_EXCEEDED: ', '');
+      }
+    }
+  }
+
   return {
     kind,
     title: titleForKind(kind),
-    description: descriptionForKind(kind),
+    description: descriptionForKind(kind, customMessage),
     action: defaultActionForKind(kind),
     debug: combinedForDetect || undefined,
   };
