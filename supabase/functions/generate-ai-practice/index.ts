@@ -384,8 +384,9 @@ CRITICAL INSTRUCTIONS:
 - Make it look professional with clear pathways, streets, and building outlines
 - The reference landmarks should have their names visible on the map`;
 
+    // Use the latest stable image generation model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${geminiApiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -455,9 +456,9 @@ Style requirements:
 - Easy to read text
 - Professional appearance suitable for a test`;
 
-    // Use direct Gemini API for image generation
+    // Use the latest stable image generation model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${geminiApiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -652,9 +653,9 @@ Style requirements:
 - Ultra high resolution, crisp graphics`;
     }
 
-    // Use direct Gemini API for image generation
+    // Use the latest stable image generation model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${geminiApiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -37,6 +37,7 @@ export default function Settings() {
   useAuth();
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [quotaRefreshTrigger, setQuotaRefreshTrigger] = useState(0);
 
   useEffect(() => {
     // Load language preference from localStorage
@@ -67,6 +68,11 @@ export default function Settings() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleApiKeyChanged = () => {
+    // Increment trigger to refresh the quota display
+    setQuotaRefreshTrigger(prev => prev + 1);
   };
 
   return (
@@ -125,8 +131,8 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <GeminiApiKeyManager />
-              <GeminiQuotaDisplay showCard={false} />
+              <GeminiApiKeyManager onApiKeyChanged={handleApiKeyChanged} />
+              <GeminiQuotaDisplay showCard={false} refreshTrigger={quotaRefreshTrigger} />
             </CardContent>
           </Card>
         </div>

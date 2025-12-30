@@ -8,7 +8,11 @@ import { Loader2, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-export function GeminiApiKeyManager() {
+interface GeminiApiKeyManagerProps {
+  onApiKeyChanged?: () => void;
+}
+
+export function GeminiApiKeyManager({ onApiKeyChanged }: GeminiApiKeyManagerProps) {
   const { user } = useAuth();
   const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(true);
@@ -69,6 +73,25 @@ export function GeminiApiKeyManager() {
     }
   };
 
+  const resetQuotaCounter = async () => {
+    if (!user) return;
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Delete today's usage record to reset the counter for new API key
+      await supabase
+        .from('gemini_daily_usage')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('usage_date', today);
+        
+      console.log('Quota counter reset for new API key');
+    } catch (error) {
+      console.error('Error resetting quota counter:', error);
+    }
+  };
+
   const handleSaveApiKey = async () => {
     if (!user) {
       toast.error('You must be logged in to save an API key.');
@@ -91,10 +114,16 @@ export function GeminiApiKeyManager() {
 
       if (error) throw error;
 
+      // Reset quota counter when API key changes (new key = fresh quota)
+      await resetQuotaCounter();
+
       toast.success('Gemini API key saved securely!');
       setHasKey(true);
       setApiKey('********'); // Mask the key after saving
       sessionStorage.removeItem('tempGeminiApiKey'); // Clear temporary storage after successful save
+      
+      // Notify parent component to refresh quota display
+      onApiKeyChanged?.();
     } catch (error: any) {
       console.error('Error saving API key:', error);
       toast.error(`Failed to save API key: ${error.message}`);
@@ -125,6 +154,9 @@ export function GeminiApiKeyManager() {
       toast.success('Gemini API key removed.');
       setHasKey(false);
       setApiKey('');
+      
+      // Notify parent component
+      onApiKeyChanged?.();
     } catch (error: any) {
       console.error('Error removing API key:', error);
       toast.error(`Failed to remove API key: ${error.message}`);

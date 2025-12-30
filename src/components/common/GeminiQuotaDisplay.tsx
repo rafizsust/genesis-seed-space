@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Zap, AlertTriangle, CheckCircle2, Info, RotateCcw } from 'lucide-react';
+import { Loader2, Zap, AlertTriangle, CheckCircle2, Info, RotateCcw, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -29,32 +29,36 @@ interface GeminiQuotaDisplayProps {
   showCard?: boolean;
   className?: string;
   onQuotaChange?: () => void;
+  refreshTrigger?: number; // Increment to trigger refresh
 }
 
-export function GeminiQuotaDisplay({ compact = false, showCard = true, className, onQuotaChange }: GeminiQuotaDisplayProps) {
+export function GeminiQuotaDisplay({ compact = false, showCard = true, className, onQuotaChange, refreshTrigger = 0 }: GeminiQuotaDisplayProps) {
   const { user } = useAuth();
   const [tokensUsed, setTokensUsed] = useState(0);
   const [requestsCount, setRequestsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchQuotaData();
-    } else {
+  const fetchQuotaData = useCallback(async (showRefreshIndicator = false) => {
+    if (!user) {
       setLoading(false);
+      return;
     }
-  }, [user]);
 
-  const fetchQuotaData = async () => {
-    setLoading(true);
+    if (showRefreshIndicator) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       // Check if user has API key
       const { data: secretData } = await supabase
         .from('user_secrets')
         .select('id')
-        .eq('user_id', user!.id)
+        .eq('user_id', user.id)
         .eq('secret_name', 'GEMINI_API_KEY')
         .maybeSingle();
 
@@ -62,6 +66,7 @@ export function GeminiQuotaDisplay({ compact = false, showCard = true, className
 
       if (!secretData) {
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -70,7 +75,7 @@ export function GeminiQuotaDisplay({ compact = false, showCard = true, className
       const { data: usageData, error } = await supabase
         .from('gemini_daily_usage')
         .select('tokens_used, requests_count')
-        .eq('user_id', user!.id)
+        .eq('user_id', user.id)
         .eq('usage_date', today)
         .maybeSingle();
 
@@ -82,7 +87,24 @@ export function GeminiQuotaDisplay({ compact = false, showCard = true, className
       console.error('Error fetching quota data:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }, [user]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchQuotaData();
+  }, [fetchQuotaData]);
+
+  // Refresh when refreshTrigger changes (for when API key is updated)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      fetchQuotaData(true);
+    }
+  }, [refreshTrigger, fetchQuotaData]);
+
+  const handleRefresh = () => {
+    fetchQuotaData(true);
   };
 
   const handleResetQuota = async () => {
@@ -184,6 +206,15 @@ export function GeminiQuotaDisplay({ compact = false, showCard = true, className
         <div className="flex items-center gap-2">
           <Zap className={cn("w-4 h-4", getStatusColor())} />
           <span className="text-sm font-medium">Today's Usage</span>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-6 w-6" 
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={cn("w-3 h-3", refreshing && "animate-spin")} />
+          </Button>
         </div>
         <Badge variant={usagePercent >= 90 ? "destructive" : usagePercent >= 70 ? "outline" : "secondary"}>
           {usagePercent.toFixed(1)}%
