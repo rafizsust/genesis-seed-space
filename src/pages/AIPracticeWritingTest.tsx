@@ -281,23 +281,24 @@ export default function AIPracticeWritingTest() {
                 </p>
               </div>
               
-              {/* Task 1: Show visual first if available (as in real IELTS) */}
-              {task.task_type === 'task1' && (task.svgCode || task.image_base64) && (
+              {/* Task 1: Show visual first (as in real IELTS). Always render a diagram container so failure shows a professional placeholder. */}
+              {task.task_type === 'task1' && (
                 <div className="flex justify-center py-4 border rounded-lg bg-muted/20">
                   {task.svgCode ? (
-                    <SafeSVG 
-                      svgCode={task.svgCode} 
+                    <SafeSVG
+                      svgCode={task.svgCode}
                       fallbackDescription={task.image_description}
                       maxWidth={400}
                       maxHeight={250}
                     />
-                  ) : task.image_base64 ? (
-                    <img 
-                      src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
-                      alt="Task visual" 
-                      className="max-w-full max-h-[250px] object-contain rounded"
+                  ) : (
+                    <SafeSVG
+                      svgCode={null}
+                      fallbackDescription={task.image_description || 'Task 1 diagram could not be generated.'}
+                      maxWidth={400}
+                      maxHeight={250}
                     />
-                  ) : null}
+                  )}
                 </div>
               )}
               
@@ -349,23 +350,24 @@ export default function AIPracticeWritingTest() {
               </p>
             </div>
             
-            {/* Task 1: Show visual first if available (as in real IELTS) */}
-            {task.task_type === 'task1' && (task.svgCode || task.image_base64) && (
+            {/* Task 1: Show visual first (as in real IELTS). Always render a diagram container so failure shows a professional placeholder. */}
+            {task.task_type === 'task1' && (
               <div className="flex justify-center py-4 border rounded-lg bg-muted/20">
                 {task.svgCode ? (
-                  <SafeSVG 
-                    svgCode={task.svgCode} 
+                  <SafeSVG
+                    svgCode={task.svgCode}
                     fallbackDescription={task.image_description}
                     maxWidth={500}
                     maxHeight={350}
                   />
-                ) : task.image_base64 ? (
-                  <img 
-                    src={task.image_base64.startsWith('data:') ? task.image_base64 : `data:image/png;base64,${task.image_base64}`} 
-                    alt="Task visual" 
-                    className="max-w-full max-h-[350px] object-contain rounded"
+                ) : (
+                  <SafeSVG
+                    svgCode={null}
+                    fallbackDescription={task.image_description || 'Task 1 diagram could not be generated.'}
+                    maxWidth={500}
+                    maxHeight={350}
                   />
-                ) : null}
+                )}
               </div>
             )}
             

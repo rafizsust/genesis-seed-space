@@ -70,9 +70,7 @@ export function SafeSVG({
       svg = svg.replace(/(<svg[^>]*)\sheight=["'][^"']*["']/i, '$1');
       
       // Add responsive attributes
-      svg = svg.replace('<svg', '<svg preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto"');
-      
-      return svg;
+      svg = svg.replace('<svg', '<svg preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto;display:block"');
     } catch (e) {
       console.error('SafeSVG: Error processing SVG:', e);
       return null;
@@ -106,7 +104,7 @@ export function SafeSVG({
 
   return (
     <div 
-      className={`svg-container bg-white rounded-lg border border-border overflow-hidden ${className}`}
+      className={`svg-container bg-background rounded-lg border border-border overflow-hidden ${className}`}
       style={{ maxWidth, maxHeight }}
     >
       <div
