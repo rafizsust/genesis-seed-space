@@ -69,8 +69,34 @@ export function SafeSVG({
       svg = svg.replace(/(<svg[^>]*)\swidth=["'][^"']*["']/i, '$1');
       svg = svg.replace(/(<svg[^>]*)\sheight=["'][^"']*["']/i, '$1');
       
+      // Add responsive attributes and text overflow prevention styles
+      const svgStyles = `
+        max-width:100%;
+        height:auto;
+        display:block;
+      `.replace(/\s+/g, '');
+      
+      // Inject a <style> tag for text overflow prevention if not already present
+      const textOverflowStyles = `
+        <style>
+          text { 
+            overflow: visible; 
+            font-family: Arial, sans-serif;
+          }
+          .label-text {
+            font-size: 12px;
+            text-anchor: middle;
+          }
+        </style>
+      `;
+      
       // Add responsive attributes
-      svg = svg.replace('<svg', '<svg preserveAspectRatio="xMidYMid meet" style="max-width:100%;height:auto;display:block"');
+      svg = svg.replace('<svg', `<svg preserveAspectRatio="xMidYMid meet" style="${svgStyles}"`);
+      
+      // Inject styles after opening svg tag if not already containing <style>
+      if (!svg.includes('<style>')) {
+        svg = svg.replace(/(<svg[^>]*>)/i, `$1${textOverflowStyles}`);
+      }
     } catch (e) {
       console.error('SafeSVG: Error processing SVG:', e);
       return null;

@@ -466,6 +466,8 @@ CRITICAL OUTPUT REQUIREMENTS:
 }
 
 // Generate map SVG using Gemini text model
+// OFFICIAL IELTS FORMAT: Answer positions (A-H) shown as CIRCLES WITH LETTER ONLY (no place names!)
+// Supporting landmarks (streets, reference buildings) shown WITH text labels for navigation
 async function generateMapSvg(
   mapDescription: string, 
   mapLabels: Array<{id: string; text: string}>,
@@ -477,24 +479,38 @@ async function generateMapSvg(
     return null;
   }
   
+  // Answer positions are just letters A-H (NO place names - test takers must figure these out)
   const answerPositions = mapLabels.map(l => l.id).join(', ');
-  const landmarksList = landmarks?.map(l => `${l.text}`).join(', ') || 'streets and pathways';
   
-  const svgPrompt = `Create an SVG map diagram for an IELTS listening test.
-The map shows: ${mapDescription}
+  // Landmarks ARE labeled with text - these help navigation (streets, known buildings)
+  const landmarksList = landmarks?.map(l => `"${l.text}"`).join(', ') || 'Main Street, Park Avenue';
+  
+  const svgPrompt = `Create an SVG map diagram for an IELTS listening/reading test.
+Map layout: ${mapDescription}
 
-CRITICAL SVG REQUIREMENTS:
-- Create valid SVG code with viewBox="0 0 800 600"
-- Use a white (#ffffff) or very light gray (#f8f9fa) background rectangle
-- Draw simple shapes for buildings (rectangles), roads (lines/paths), and areas
-- Show letter circles (${answerPositions}) at various positions - white circles with black border and letter inside
-- Show these LABELED reference points with text: ${landmarksList}
-- Include a compass (N/S/E/W) in the top-right corner
-- Style: Architectural diagram, clean lines, professional appearance
-- Use black (#333333) for lines, dark text
-- Use light fills for buildings (#e0e0e0), paths (#cccccc)
-- Make text readable with font-size 14-16px
-- The letter circles should be approximately 30px diameter`;
+CRITICAL IELTS OFFICIAL FORMAT - ANSWER POSITIONS vs LANDMARKS:
+1. ANSWER POSITIONS (${answerPositions}): Draw as WHITE CIRCLES with BLACK border containing ONLY the letter (A, B, C, etc.)
+   - These mark where unknown locations are - the test taker must identify them
+   - DO NOT show any place names next to these circles - ONLY the letter!
+   - Circles should be ~28-32px diameter, clearly visible
+
+2. LABELED LANDMARKS (for navigation): ${landmarksList}
+   - These ARE labeled with text names (e.g., "Main Street", "Bank", "Café")
+   - These help test takers navigate and understand directions in the audio/passage
+   - Draw as rectangles or street names with readable text labels
+
+SVG TECHNICAL REQUIREMENTS:
+- Valid SVG with viewBox="0 0 800 600"
+- White (#ffffff) or very light gray (#f8f9fa) background rectangle
+- Architectural/floor plan style: clean lines, simple shapes
+- Roads: gray lines (#999) or dashed paths
+- Buildings: light gray rectangles (#e8e8e8) with dark border (#333)
+- Compass (N/E/S/W) in top-right corner
+- Font-size 12-14px for all text
+- CRITICAL TEXT WRAPPING: Keep all text labels SHORT (max 12 characters per line)
+  - For longer names, use <tspan> elements to wrap to multiple lines
+  - Example: <text><tspan x="100" dy="0">Community</tspan><tspan x="100" dy="14">Center</tspan></text>
+- Professional exam-quality appearance`;
 
   console.log('Generating map SVG for IELTS test...');
   return await generateSvgWithGemini(svgPrompt, geminiApiKey);
@@ -1316,37 +1332,53 @@ Return ONLY valid JSON in this exact format:
 
     case 'MAP_LABELING':
       return basePrompt + `2. Create a map/diagram labeling task with ${questionCount} labels to identify.
-   - The passage should describe locations or parts of a place/facility in detail
-   - Each question asks which labeled area (A, B, C, etc.) matches a description
-   - IMPORTANT: The passage MUST clearly state which label corresponds to which location
-   - Make sure answers are definitively correct based on the passage content
-   - CRITICAL: DO NOT make answers sequential (e.g., Q1=A, Q2=B, Q3=C is WRONG)
-   - RANDOMIZE the correct answers across questions (e.g., Q1=D, Q2=A, Q3=F, Q4=B)
-   - Questions should ask about locations in a non-sequential order relative to their labels
+
+OFFICIAL IELTS FORMAT - CRITICAL RULES:
+- The MAP shows: (1) Letter circles A-H marking UNKNOWN locations, and (2) LABELED landmarks for navigation
+- The PASSAGE describes where things are using DIRECTIONS and LANDMARKS (e.g., "opposite the main entrance", "north of the café")
+- QUESTIONS show the PLACE NAME the test taker must locate (e.g., "Library", "Gift Shop")
+- The correct_answer is the LETTER (A, B, C, etc.) where that place is located
+
+MAP STRUCTURE:
+- map_labels: Answer positions A-H. The "text" field stores what the letter represents (for answer checking) but this text is NOT shown on the map - only the letter circle appears!
+- landmarks: Reference points that ARE labeled on the map (streets, known buildings like "Main Entrance", "Café", "Park")
+
+PASSAGE STYLE:
+- Describe locations using RELATIVE POSITIONS: "The gift shop is directly opposite the main entrance" or "Located to the north of the café"
+- NEVER say "The gift shop is at position B" - test takers must figure this out!
+- Use directional words: north, south, east, west, opposite, adjacent, between, corner of, next to, behind
+
+CRITICAL: Answers must NOT be sequential! Randomize: Q1=D, Q2=A, Q3=F, Q4=B (NOT Q1=A, Q2=B, Q3=C)
 
 Return ONLY valid JSON in this exact format:
 {
   "passage": {
-    "title": "The title of the passage",
-    "content": "The full passage text describing a location. Example: 'The reception area, labeled A on the map, is the first stop for visitors. The computer lab, marked as C, provides internet access. Study rooms are designated as B and offer quiet spaces. The café, marked D, serves refreshments.'"
+    "title": "The New Community Center",
+    "content": "The new community center opened last month. The main entrance faces Oak Street. Immediately to the left of the entrance is the reception desk. The children's play area is located in the northeast corner, directly behind the café. The library occupies the western wing, opposite the sports hall. Meeting rooms can be found on the second floor, accessible via the staircase next to the reception."
   },
   "instruction": "Label the map below. Choose the correct letter, A-H.",
-  "map_description": "A floor plan of a library showing: reception (A), study rooms (B), computer lab (C), café (D), meeting rooms (E), quiet zone (F), children's section (G), magazine area (H)",
+  "map_description": "A floor plan showing Oak Street at the bottom with main entrance. The building has various rooms arranged around a central corridor.",
   "map_labels": [
     {"id": "A", "text": "Reception"},
-    {"id": "B", "text": "Study Rooms"},
-    {"id": "C", "text": "Computer Lab"},
-    {"id": "D", "text": "Café"},
+    {"id": "B", "text": "Children's Play Area"},
+    {"id": "C", "text": "Library"},
+    {"id": "D", "text": "Sports Hall"},
     {"id": "E", "text": "Meeting Rooms"},
-    {"id": "F", "text": "Quiet Zone"},
-    {"id": "G", "text": "Children's Section"},
-    {"id": "H", "text": "Magazine Area"}
+    {"id": "F", "text": "Storage"},
+    {"id": "G", "text": "Staff Room"},
+    {"id": "H", "text": "Toilets"}
+  ],
+  "landmarks": [
+    {"id": "L1", "text": "Oak Street"},
+    {"id": "L2", "text": "Main Entrance"},
+    {"id": "L3", "text": "Café"},
+    {"id": "L4", "text": "Staircase"}
   ],
   "questions": [
-    {"question_number": 1, "question_text": "Where can visitors access the internet?", "correct_answer": "C", "explanation": "The passage states 'The computer lab, marked as C, provides internet access.'"},
-    {"question_number": 2, "question_text": "Where should visitors go first when entering?", "correct_answer": "A", "explanation": "The passage states 'The reception area, labeled A on the map, is the first stop for visitors.'"},
-    {"question_number": 3, "question_text": "Where can visitors get food or drinks?", "correct_answer": "D", "explanation": "The passage states 'The café, marked D, serves refreshments.'"},
-    {"question_number": 4, "question_text": "Where are the quiet study spaces located?", "correct_answer": "B", "explanation": "The passage states 'Study rooms are designated as B and offer quiet spaces.'"}
+    {"question_number": 1, "question_text": "Children's Play Area", "correct_answer": "B", "explanation": "Passage says it's in the northeast corner, behind the café"},
+    {"question_number": 2, "question_text": "Library", "correct_answer": "C", "explanation": "Passage says it occupies the western wing, opposite the sports hall"},
+    {"question_number": 3, "question_text": "Reception", "correct_answer": "A", "explanation": "Passage says it's immediately left of the main entrance"},
+    {"question_number": 4, "question_text": "Sports Hall", "correct_answer": "D", "explanation": "Passage says the library is opposite it"}
   ]
 }`;
 
@@ -1830,22 +1862,29 @@ Return ONLY valid JSON (no markdown code blocks) in this exact format:
     case 'MAP_LABELING':
       return basePrompt + `2. Create a map labeling task with ${questionCount} locations to identify.
 
-OFFICIAL IELTS FORMAT - IMPORTANT:
-- The map has letter positions A-H that are answer options (shown as circles on the map, NOT labeled with names)
-- The map also has LANDMARKS that ARE labeled (e.g., "Main Street", "Gift Shop", "Bank") as reference points
-- Questions show the LOCATION NAME the user needs to find (e.g., "Quilt Shop", "Museum")
-- The correct_answer is the LETTER (A, B, C, etc.) where that location is on the map
-- In the audio dialogue, describe locations by their RELATIVE POSITION to landmarks (e.g., "The museum is on the corner of Oak Street and Main Street" or "It's directly opposite the bank")
+OFFICIAL IELTS LISTENING FORMAT - CRITICAL RULES:
+- The MAP shows: (1) Letter circles A-H marking UNKNOWN locations (NO place names!), and (2) LABELED landmarks for navigation
+- The AUDIO describes where things are using DIRECTIONS and LANDMARKS only
+- QUESTIONS show the PLACE NAME the test taker must locate (e.g., "Quilt Shop", "Museum")  
+- The correct_answer is the LETTER (A, B, C, etc.) where that place is located
 
-CRITICAL: Answers must NOT be sequential! The correct answers should be RANDOMIZED across A-H, NOT following the pattern 1->A, 2->B, 3->C, etc.
-For example, Question 1 might be "F", Question 2 might be "C", Question 3 might be "H", etc.
+MAP STRUCTURE:
+- map_labels: Answer positions A-H. The "text" field stores what the letter represents (for answer checking) but this text is NOT shown on the map - only the letter circle appears!
+- landmarks: Reference points that ARE labeled on the map (streets, known buildings like "Bank", "Café", "Welcome Center")
 
-map_labels: These are the answer positions (A-H). Do NOT include the location name - the user must figure out which letter matches which location from the audio.
-landmarks: These are labeled reference points on the map that help navigation (streets, existing buildings with names visible).
+AUDIO DIALOGUE STYLE - NATURAL DIRECTIONS:
+- GOOD: "The quilt shop is on Main Street, just past the welcome center on your left"
+- GOOD: "You'll find the museum on Oak Street, directly opposite the bank"
+- GOOD: "The school house is at the far end of Elm Street, on the corner"
+- BAD (NEVER SAY): "The quilt shop is at position F" - test takers must figure this out themselves!
+
+Use directional language: north/south/east/west, opposite, next to, on the corner of, between, past, behind, at the end of
+
+CRITICAL: Answers must NOT be sequential! Randomize: Q1=F, Q2=C, Q3=H (NOT Q1=A, Q2=B, Q3=C)
 
 Return ONLY valid JSON (no markdown code blocks) in this exact format:
 {
-  "dialogue": "Guide: Welcome to the historic district. Let me show you around.\\nVisitor: Great, I'm interested in the craft shops.\\nGuide: Well, there's a wonderful quilt shop. It's further down Main Street, past the welcome center - that's position F on your map.\\nVisitor: And what about the museum?\\nGuide: The Handicrafts Museum is on Oak Street. It's directly opposite the bank, that's position C on the map.\\nGuide: If you're looking for the school house, it's at the far end of Elm Street, at position H.",
+  "dialogue": "Guide: Welcome to the historic craft district. Let me show you around.\\nVisitor: Great, I'm interested in finding the craft shops.\\nGuide: Well, there's a wonderful quilt shop. It's on Main Street, just past the welcome center on your left.\\nVisitor: And what about the handicrafts museum?\\nGuide: The museum is on Oak Street. You'll find it directly opposite the bank - you can't miss it.\\nVisitor: Is there a school house here too?\\nGuide: Yes, the old school house is at the far end of Elm Street, on the corner near Maple Street.",
   "speaker_names": {"Guide": "Tour Guide", "Visitor": "Tourist"},
   "instruction": "Label the map. Choose the correct letter, A-H, for each label.",
   "map_description": "A street map with Oak Street at the top, Ash Street in the middle, and Elm Street at the bottom. Main Street runs vertically on the left, Maple Street on the right.",
@@ -1861,14 +1900,14 @@ Return ONLY valid JSON (no markdown code blocks) in this exact format:
   ],
   "landmarks": [
     {"id": "L1", "text": "Bank"},
-    {"id": "L2", "text": "Cafe"},
+    {"id": "L2", "text": "Café"},
     {"id": "L3", "text": "Gift Shop"},
     {"id": "L4", "text": "Welcome Center"}
   ],
   "questions": [
-    {"question_number": 1, "question_text": "Quilt Shop", "correct_answer": "F", "explanation": "Guide says it's past the welcome center on Main Street, position F"},
-    {"question_number": 2, "question_text": "Handicrafts Museum", "correct_answer": "C", "explanation": "Guide says it's opposite the bank on Oak Street, position C"},
-    {"question_number": 3, "question_text": "School House", "correct_answer": "H", "explanation": "Guide says it's at the far end of Elm Street, position H"}
+    {"question_number": 1, "question_text": "Quilt Shop", "correct_answer": "F", "explanation": "Guide says it's past the welcome center on Main Street"},
+    {"question_number": 2, "question_text": "Handicrafts Museum", "correct_answer": "C", "explanation": "Guide says it's opposite the bank on Oak Street"},
+    {"question_number": 3, "question_text": "School House", "correct_answer": "H", "explanation": "Guide says it's at the far end of Elm Street, near Maple Street"}
   ]
 }`;
 
