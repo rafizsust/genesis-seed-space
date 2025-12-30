@@ -22,32 +22,44 @@ export function SafeSVG({
 }: SafeSVGProps) {
   const [hasError, setHasError] = useState(false);
 
-  // Sanitize and validate SVG code
+  // Sanitize and validate SVG code with smart extraction for truncated output
   const sanitizedSvg = useMemo(() => {
     if (!svgCode || typeof svgCode !== 'string') {
       return null;
     }
 
     try {
-      // Extract SVG from markdown code blocks if present
       let svg = svgCode.trim();
       
-      // Handle ```svg ... ``` or ```xml ... ``` code blocks
+      // Step 1: Extract SVG from markdown code blocks if present
       const codeBlockMatch = svg.match(/```(?:svg|xml)?\s*\n?([\s\S]*?)\n?```/);
       if (codeBlockMatch && codeBlockMatch[1]) {
         svg = codeBlockMatch[1].trim();
       }
       
-      // Ensure it starts with <svg and ends with </svg>
-      if (!svg.toLowerCase().startsWith('<svg')) {
-        // Try to find SVG tag within the content
-        const svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
-        if (svgMatch) {
-          svg = svgMatch[0];
+      // Step 2: Try to find complete SVG (greedy match)
+      let svgMatch = svg.match(/<svg[\s\S]*<\/svg>/i);
+      
+      // Step 3: Handle truncated SVG - find opening tag and attempt to repair
+      if (!svgMatch) {
+        const svgStartMatch = svg.match(/<svg[^>]*>/i);
+        if (svgStartMatch) {
+          const startIndex = svg.indexOf(svgStartMatch[0]);
+          let svgContent = svg.substring(startIndex);
+          
+          // Check if SVG is truncated (missing closing tag)
+          if (!svgContent.toLowerCase().includes('</svg>')) {
+            console.warn('SafeSVG: SVG appears truncated, adding closing tag');
+            svgContent = svgContent + '</svg>';
+          }
+          
+          svg = svgContent;
         } else {
           console.warn('SafeSVG: No valid SVG tag found');
           return null;
         }
+      } else {
+        svg = svgMatch[0];
       }
       
       // Basic security: remove script tags and event handlers
@@ -97,6 +109,8 @@ export function SafeSVG({
       if (!svg.includes('<style>')) {
         svg = svg.replace(/(<svg[^>]*>)/i, `$1${textOverflowStyles}`);
       }
+      
+      return svg;
     } catch (e) {
       console.error('SafeSVG: Error processing SVG:', e);
       return null;
